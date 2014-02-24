@@ -37,6 +37,13 @@ $PAGE->set_heading(get_string('bcgtmydashboard', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('bcgtmydashboard', 'block_bcgt'));
 $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'','title');
+if($courseID != -1)
+{
+    global $DB;
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($courseID));
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$courseID,'title');
+    
+}
 $pageTitle = DashTab::bcgt_get_dashboard_tab_title($tab);
 $PAGE->navbar->add($pageTitle);
 $jsModule = array(
@@ -66,7 +73,7 @@ echo '<div id="studentSearchContent"></div>';
 //div for the content
 echo '<div class="bcgt_container" id="bcgtDashboard">';
 echo '<form method="POST" name="gotocourse" action="'.$CFG->wwwroot.'/course/view.php">';
-echo "<label for='id'>".get_string('gotomycourses', 'block_bcgt')."</label>";
+echo "<label for='gotocourse'>".get_string('gotomycourses', 'block_bcgt')."</label>";
 $hasQual = false;
 $hidden = false;
 $courses = bcgt_get_users_course_access($USER->id, $hasQual, $hidden);
@@ -79,13 +86,13 @@ if($courses)
         $selected = '';
         if($courseID == $course->courseid)
         {
-            $selected = 'selected';
+            $selected = 'selected="selected"';
         }   
         echo "<option $selected value='".$course->courseid."'>".$course->shortname." - ".$course->fullname."</option>";
     }
 }
 echo "</select>";
-echo "<input type='submit' name='go' value='".get_string('go', 'block_bcgt')."'/>";
+echo "<input type='submit' id='courseGo' name='go' value='".get_string('go', 'block_bcgt')."'/>";
 echo "</form>";
 echo '<div id="bcgtDashTabs">';
 echo '<form method="POST" name="changeView" action="#tab">';

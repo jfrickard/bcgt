@@ -1761,6 +1761,157 @@ class CGUnit extends Unit {
 
     
     
+    public function print_grid($qualID)
+    {
+        
+        global $CFG, $COURSE, $printGrid;
+        $printGrid = true;
+        $context = context_course::instance($COURSE->id);
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }
+
+        echo "<!doctype html><html><head>";
+        echo "<link rel='stylesheet' type='text/css' href='{$CFG->wwwroot}/blocks/bcgt/print.css'>";
+        echo load_javascript(false, true);
+        
+        $logo = get_config('bcgt', 'logoimgurl');
+        
+        echo "</head><body style='background: url(\"{$logo}\") no-repeat;'>";
+                
+        echo "<div class='c'>";
+            echo "<h1>{$this->get_display_name()}</h1>";
+
+            echo "<br><br>";
+            
+            // Key
+            echo "<div id='key'>";
+                echo CGQualification::get_grid_key();
+            echo "</div>";
+            
+            
+            
+            echo "<br><br>";
+            
+            echo "<table id='printGridTable'>";
+            
+                $criteriaNames = $this->get_used_criteria_names();
+                $headerObj = $this->get_unit_grid_header($criteriaNames, 's', $context);
+                
+                echo $headerObj->header;
+                
+                $studentsArray = get_users_on_unit_qual($this->id, $qualID);
+            
+                if ($studentsArray)
+                {
+
+                    foreach($studentsArray as $student)
+                    {
+
+                        if(isset($student->unit))
+                        {
+                            //then we are coming from the session and the unit object has aleady
+                            //been loaded
+                            $studentUnit = $student->unit;
+                        }
+                        else
+                        {
+                            $loadParams = new stdClass();
+                            $loadParams->loadLevel = Qualification::LOADLEVELALL;
+                            $loadParams->loadAward = true;
+                            $studentUnit = Unit::get_unit_class_id($this->id, $loadParams);
+                            $studentUnit->load_student_information($student->id, $qualID, $loadParams);
+                            $student->unit = $studentUnit;
+
+                            //then we want to save the object to the session
+                            //but we also just want to sstudent load on this object (as each time it will
+                            //clear it down)
+                        }
+
+                        // Units & Grades
+                        if($studentUnit->is_student_doing())
+                        {	
+
+                            echo "<tr>";
+
+                            echo "<td></td>";
+
+                            $row = $this->build_unit_grid_students_details($student, $qualID, 
+                                    array(), $context);
+
+                            foreach($row as $td)
+                            {
+                                echo "<td>{$td}</td>";
+                            }
+
+                            
+                            // Qual award
+                            $qualAward = $this->get_student_qual_award($student->id, $qualID);
+
+                            $studentQualAward = 'N/A';
+                            if ($qualAward){
+                                $studentQualAward = $qualAward->targetgrade;
+                            }
+
+                            echo "<td>".$studentQualAward."</td>";
+
+
+                            //work out the students unit award
+                            $stuUnitAward = $studentUnit->get_user_award();
+                            $award = '';
+                            $rank = '';
+                            if($stuUnitAward)
+                            {
+                                $rank = $stuUnitAward->get_rank();
+                                $award = $stuUnitAward->get_award();
+                            }
+
+                            echo "<td><span id='unitAwardAdv_$student->id'>".$award."</span></td>";
+                            
+                            
+                            if($criteriaNames)
+                            {
+
+                                foreach($criteriaNames AS $criteriaName)
+                                {	
+                                    
+                                    if($studentCriteria = $studentUnit->get_single_criteria(-1, $criteriaName))
+                                    {
+                                        echo "<td>".$studentCriteria->get_grid_td(false, false, $this, $student, null, 'unit')."</td>";
+                                    }
+                                    
+                                }//end for each criteria Name
+                            }//end if criteriaNames
+
+
+                            echo "</tr>";
+
+                        }
+
+                    }
+
+                }
+                
+                
+            
+            
+            echo "</table>";
+            echo "</div>";
+            
+            //echo "<br class='page_break'>";
+            
+            // Comments and stuff
+            // TODO at some point
+            
+            echo "<script> $('a').contents().unwrap(); $('.studentUnitInfo').remove(); </script>";
+            
+        echo "</body></html>";
+        
+    }
+    
+    
     
     /**
      * This wants to be able to take things like, level, subtype etc and

@@ -15,9 +15,11 @@ require_once('../../../config.php');
 require_once('../lib.php');
 require_once($CFG->dirroot.'/user/profile/lib.php');
 $courseID = optional_param('cID', -1, PARAM_INT);
+$groupingID = optional_param('grID', -1, PARAM_INT);
+$edit = optional_param('edit', false, PARAM_BOOL);
 $editing = false;
 $save = false;
-if(isset($_POST['edit']))
+if(isset($_POST['edit']) || $edit)
 {
     $editing = true;
 }
@@ -82,7 +84,7 @@ $out = $OUTPUT->header();
     
     $out .= html_writer::start_tag('div', array('class'=>'bcgt_grid_outer', 
     'id'=>'assGridOuter'));
-    $out .= html_writer::tag('h3', 'Student Formal Assesments', 
+    $out .= html_writer::tag('h3', get_string('studentfas', 'block_bcgt'), 
         array('class'=>'subTitle'));
     //at this point we load it up into the session
     $string = 'edit';

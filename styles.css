@@ -9,6 +9,222 @@
 
 @import url("css/start/jquery-ui-1.10.3.custom.css");
 
+/************************/
+ /*Start of CSS rewrite:*/
+
+ /** Generalisations **/
+ .bcgt_admin_container{
+     
+ }
+
+.bcgt_table {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.bcgt_table td,  .bcgt_table th{
+    border : 1px solid #CFCFCF;
+}
+
+.bcgt_table th {
+    background-color : #C9DEEF;
+}
+    
+.bcgt_table tr:nth-child(odd) td{
+    background-color : #EFFEFF;
+}
+
+.bcgt_table tr:nth-child(even) td{
+    background-color : #FFFFFF;
+}
+
+.bcgt_table td.critdivider {
+    background-color : #A4A4A4!important;
+    
+}
+
+.bcgt_table td.unitnocrit {
+    background-color: #D8D8D8!important;
+}
+
+.bcgt_form .save_input {
+    width: 50px;
+    margin:auto;
+    display: block;
+}
+
+.bcgt_form .search_input {
+    width: 60px;
+    margin:auto;
+    display: block;
+    padding-top:10px;
+    padding-bottom:10px;
+}
+
+.bcgt_form .filter_input {
+    width: 50px;
+    height: 25px;
+    margin:auto;
+    display: block;
+    margin-top:5px;
+}
+
+.bcgt_div_container .tabtree .tabrow0 li.focus a {
+    background-color: #C8E5FF;
+}
+
+.bcgtmainfilter {
+    border: #888888 dashed 1px;
+    background-color: #EFE8F0;
+    width: 90%;
+    margin:auto;
+    margin-bottom: 5px;
+    padding-left: 10px;
+    padding-right:10px;
+    padding-bottom: 10px;
+}
+
+/*#bcgtmainfiltergroups {
+    border: #888888 dashed 1px;
+    background-color: #EFE8F0;
+    width: 50%;
+    margin:auto;
+    margin-bottom: 5px;
+    padding-left: 10px;
+    padding-right:10px;
+    padding-bottom: 10px;
+}*/
+
+.bcgtmainfilter .inputContainer {
+    width: 100%!important;
+    margin-top:5px;
+    margin-bottom:5px;
+}
+
+.bcgtmainfilter .inputLeft {
+    width: 24%!important;
+}
+
+.bcgtmainfilter .inputRight {
+    width: 73%!important;
+}
+
+#bcgtmainfiltergroups {
+    padding-top:5px;
+    padding-bottom:5px;
+}
+
+#bcgtmainfiltergroups .bcgtoptionalfilter {
+    margin-bottom: 0px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+#bcgtmainfiltergroups .inputContainer {
+    margin-top: 0px;
+}
+
+.bcgtqualfilterdesc {
+    font-size: 0.7em;
+}
+
+/*****/
+
+/**Group Preferances:**/
+.bcgt_group_prefs td.bcgtgrouppref {
+    padding: 0em;
+}
+
+.bcgt_group_prefs .no_groups {
+    color: gray;
+}
+
+.bcgt_group_prefs tr.no_groups td.bcgtgrouppref {
+    background-color : lightgray;
+}
+
+.bcgt_group_pref_inner tr:nth-child(odd) td{
+    background-color : lightgray;
+}
+
+.bcgt_group_pref_inner tr:nth-child(even) td{
+    background-color : #FFFFFF;
+}
+
+.bcgt_group_pref_inner td {
+    border : 0px solid #000000;
+    border-top: 1px solid #CFCFCF;
+    border-bottom: 1px solid #CFCFCF;
+}
+
+.bcgt_group_pref_inner tr.nogroups td {
+    border : 0px solid #000000;
+}
+
+.bcgt_group_pref_inner {
+    margin: 0em;
+}
+
+/*****************/
+
+/*************My DashBoard********************/
+#bcgtDashTabs li.focus a{
+    background-color: #8FB28F;
+}
+
+#trackersDashContainer span.report,  #groupsDashContainer span.report{
+    background-color: lightgrey;
+    
+}
+
+#trackersDashContainer span.report:hover, #groupsDashContainer span.report:hover {
+    cursor: pointer;
+}
+
+#trackersDashContainer .simplequalreportcontent, #groupsDashContainer .simplequalreportcontent {
+    margin-bottom: 50px; 
+}
+
+#trackersDashContainer .simplequalreportcontent li.focus a, #groupsDashContainer .simplequalreportcontent li.focus a {
+    background-color: #8FB28F;
+}
+
+#trackersDashContainer .simplequalreportcontent li a.nolink, #groupsDashContainer .simplequalreportcontent li a.nolink {
+    cursor: pointer;
+}
+
+#groupsDashContainer span.editgroups {
+    color: #BCBCC2;
+    font-size: 0.6em;
+}
+
+/************* GRID SELECRT ******************/
+#gridSelect .bcgt_col_one {
+    width:32%;
+    float: left;
+}
+
+#gridSelect .bcgt_col_two {
+    width:66%;
+    float: right;
+}
+
+#gridSelect .gridSelectDesc {
+    font-size: 0.8em;
+    color: grey;
+}
+
+a.bcgtnoaccess {
+    color: grey;
+    pointer-events: none;
+    cursor: default;
+}
+
+#gridSelect .bcgt_col_two img.bcgtmodcriticon {
+    height: 18px;
+    width: 18px;
+}
+
 /*.dataTables_scrollBody { min-height: 300px !important; }*/
 
 .warningcredits {
@@ -253,6 +469,21 @@ h2.bcgt_admin_title {
 
 #gridselect li.gridSelectQualSelect {
     color: grey;
+}
+
+#gridselect fieldset {
+    border: #888888 solid 1px;
+    width: 90%;
+    margin: auto;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    padding-top:5px;
+}
+
+#gridselect fieldset legend {
+    text-align: left;
+    padding-left: 5px;
+    padding-right: 5px;
 }
 
 #gridselect #qual option.noStudents {
@@ -846,6 +1077,14 @@ td.criteriaComments {
 .alevelClassGridTables tr:nth-child(odd) {
     background-color : #EFF;
 }
+
+.unitGridDiv .bcgtmodcriticon {
+    width:18px;
+    height:18px;
+    padding:4px;
+    float:left;
+} 
+
 
 /****** END GRID STYLES *****/
 
@@ -2307,3 +2546,351 @@ input.long
     background: -webkit-gradient(linear, 0% 0%, 0% 100%, from(#f8f8f8), to(#e9e9e9));
     background: -moz-linear-gradient(0% 0% 270deg,#f8f8f8, #e9e9e9);
 }
+
+.bcgt_activity_controls .tabs .tabtree {
+    margin-bottom: 2em!important;
+}
+
+.bcgt_mod_keyos {
+    width: 40%;
+    margin:auto;
+    padding-bottom:10px;
+}
+
+.bcgt_mod_keyos .key {
+    display:block;
+}
+
+.bcgt_mod_keyos .key .criterialinkextra {
+    font-size: 0.8em;
+    font-style: italic;
+}
+
+.ui-dialog {
+    width: 500px!important;
+    /*left:420px!important;*/
+    /*top: -1000px!important;*/
+}
+
+#bcgtdialogcontent {
+    max-height: 400px;
+    overflow-y: scroll;
+}
+
+.bcgtdialogmodcheck {
+    background-color: white!important;
+    border:grey solid 1px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    padding: 4px;
+    mid-width: 200px;
+}
+
+.bcgtdialogmodcheck img.modalload{
+    display: block;
+    width: 50px;
+    height: 50px;
+    margin: auto;
+    margin-top: 40px;
+}
+
+
+.bcgtdialogmodcheck .ui-corner-all {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.bcgtdialogmodcheck .ui-widget-header {
+    border: 1px solid #aaaaaa;
+    background: #cccccc url(pix/css/softback_cccccc.png) 50% 50% repeat-x;
+    color: #222222;
+    font-weight: bold;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    pading-left: 4px;
+}
+
+.bcgtdialogmodcheck .ui-dialog-title{
+    margin: .1em 0;
+    white-space: nowrap;
+    width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 4px;
+}
+
+.bcgtdialogmodcheck .ui-dialog-titlebar-close {
+    float: right;
+    right: .3em;
+    top: 50%;
+    margin: -2px 4px 0 0;
+    padding: 1px;
+    height: 20px;
+}
+
+.ui-widget-overlay {
+    background: #aaaaaa;
+    opacity: .3;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.bcgtdialogmodcheck .modlink {
+    border: #cccccc solid 1px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    margin:4px;
+    margin-top:5px;
+    margin-bottom:5px;
+    padding: 2px;
+}
+
+.bcgtdialogmodcheck .modlink .modlinkheader {
+    background-color: #CFCFCF;
+    padding-top:2px;
+    padding-bottom:2px;
+}
+
+.bcgtdialogmodcheck .modlink .modlinkheader .activityicon{
+    height: 18px;
+    width:18px;
+    margin-right:2px;
+}
+
+.bcgtdialogmodcheck .modlink .modlinkheadername {
+    font-size: 1.3em;
+    font-weight: bold;
+    padding-left:2px;
+    padding-right:2px;
+    width:79px;
+    text-wrap: normal;
+}
+
+.bcgtdialogmodcheck .modlink .modlinkheadermod {
+    font-size: 0.9em;
+    font-style: italic;
+    margin-left: 3px;
+    margin-right: 3px;
+    text-transform: capitalize;
+}
+
+.bcgtdialogmodcheck .modlink .modlinkheaderdate {
+    float: right;
+    margin-right:4px;
+}
+
+.bcgtdialogmodcheck .modlinkingsubsummary {
+    width:80%;
+    margin:auto;
+    padding:4px;
+    border-bottom: grey dashed 1px;
+}
+
+#bcgtdialogcontent .modlinktrackingsummary {
+    padding-top:8px;
+    padding-bottom:8px;
+}
+
+.bcgtdialogmodcheck .modlinkingsubsummary .modlinkingssub {
+    margin-left:8px;
+    margin-right:8px;
+}
+
+.bcgtdialogmodcheck .modlink .modlinktrackingsummary table.modlinkingsummary, 
+.bcgtmodlinkingselections table.modlinkingsummary{
+    margin-bottom:0px;
+    margin-left:5px;
+    border: grey solid 1px;
+}
+
+bcgtmodlinkingselections
+ 
+.bcgtdialogmodcheck .modlink .modlinktrackingsummary table.modlinkingsummary td, 
+.bcgtmodlinkingselections table.modlinkingsummary td{
+    padding:0px;
+    border-bottom: grey solid 1px;
+    border-top: grey solid 1px;
+}
+
+.bcgtdialogmodcheck .modlink .modlinktrackingsummary  table.modlinkingsummary table.activityLinksActivities,
+.bcgtmodlinkingselections table.modlinkingsummary table.activityLinksActivities{
+    margin-bottom:0px;
+    padding:0px;
+}
+.bcgtdialogmodcheck .modlink .modlinktrackingsummary table.modlinkingsummary table.activityLinksActivities td,
+.bcgtmodlinkingselections table.modlinkingsummary table.activityLinksActivities td{
+    padding:.5em;
+    border-top: none;
+}
+
+.bcgtdialogmodcheck .modlink .bcgtmodlinkingaction {
+    width:240px;
+    margin:auto;
+    padding-top:2px;
+    padding-bottom:2px;
+    display:block;
+}
+
+.bcgtdialogmodcheck .modlink .bcgtmodlinkingaction input {
+    margin-left:2px;
+    margin-right:2px;
+    padding: 2px;
+/*    display: block;
+    margin:auto;*/
+}   
+
+.bcgtmodlinkingselections img.activityicon {
+    height:18px;
+    width:18px;
+}
+
+.bcgtmodlinkingselections table.activityLinks td.bcgtmodlinkingunitsummary {
+    padding-left:0px!important;
+}
+
+.bcgtdialogmodcheck .ui-icon {
+    left: 50%;
+    margin-left: -8px;
+    position: absolute;
+    top: 50%;
+    margin-top: -8px;
+    width: 16px;
+    height: 16px;
+    background-image: url(pix/css/close.png);
+    display: block;
+    text-indent: -99999px;
+    overflow: hidden;
+    background-repeat: no-repeat;
+}
+
+.bcgtdialogmodcheck .ui-button-text {
+    padding: .4em;
+    text-indent: -9999999px;
+}
+
+span.bcgtcritass:hover {
+    cursor: pointer;
+} 
+
+img.modcheckicon{
+   width:18px;
+   height:18px;
+}
+
+td.bcgtcritass span.bcgtcritass .bcgtmodcriticon {
+    height: 18px!important;
+    width: 18px!important;
+    margin-left:2px;
+}
+
+.bcgtmodkey .bcgtmodkeyicon {
+    height: 30px!important;
+    width: 30px!important;
+}
+
+.bcgtmodkey td span.bcgtmodkeymod {
+    text-transform: capitalize;
+    position:relative;
+    top:-5px;
+    vertical-align: super;
+    
+}
+
+td.bcgtcritass span.bcgtcritass sup {
+    vertical-align: super!important;
+    position: relative;
+    top:-8px;
+}
+
+.bcgt_unit_activities {
+    width:70%;
+    margin:auto;
+}
+
+.bcgt_unit_activities h3 {
+    background-color: #e0e0e0;
+    width:60%;
+    margin:auto;
+    margin-bottom: 10px;
+    margin-top:25px;
+    padding:5px;
+}
+
+.bcgt_unit_activities .bgctActivityUnit h3 {
+    margin-bottom: 10px;
+    margin-top:5px;
+    background-color: white;
+    width:100%;
+    border-bottom:grey solid 1px;
+}
+
+.bcgt_unit_activities .bgctActivityUnit table {
+    margin-top:8px;
+}
+
+
+.bcgt_unit_activities .bgctActivityUnit table td.deleteselection {
+    float: right;
+}
+
+.bcgt_unit_activities .bgctSelectActivity, .bcgt_unit_activities .bgctSelectActivity {
+    margin:auto;
+}
+
+.bcgt_unit_activities .bgctActivityUnit {
+    margin:auto;
+}
+
+.bcgt_unit_activities .currentSelections {
+}
+
+.bcgt_unit_activities h2 {
+    margin:auto;
+    display: block;
+    width:80%;
+    margin-bottom: 10px;
+        
+}
+
+.bcgt_unit_activities input.save {
+    display: block;
+    margin:auto;
+}
+
+.bcgt_unit_activities .activityicon {
+    height: 18px;
+    width: 18px;
+    padding-left: 5px;
+    padding-right:5px;
+}
+
+.bcgt_unit_activities .activityDueDate {
+    float:right;
+    padding-left:4px;
+    padding-right:4px;
+}
+
+.bcgt_unit_activities .activityName {
+    max-width: 50%;
+    text-wrap: normal;
+    overflow: visible;
+}
+
+table.trackersOverallTable {
+    min-width:90%;
+}
+
+
+.bgctActivityUnit {
+    overflow-x: scroll;
+}
+

@@ -10,6 +10,7 @@
  *
  * @author kdavies
  */
+global $CFG;
 require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECCriteria.class.php');
 class BTECLowerCriteria extends BTECCriteria{
     

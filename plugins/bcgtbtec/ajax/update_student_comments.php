@@ -11,8 +11,10 @@ require_login();
  * $action - e.g. 'update_comments', 'update_task', etc... to define what is happening
  * $params - holds the given parameters for that specific action in an array
  */
+
 $action = optional_param('action', null, PARAM_TEXT);
 $params = optional_param_array('params', null, PARAM_TEXT);
+
 // If no action or params are set, exit the script
 if(is_null($action)) exit;
 
@@ -32,14 +34,13 @@ function _error($msg = null){
     exit;
 }
         
-
 // Check if the qual, crit, etc... are all valid for a student
 function _valid($type, $params, $stage=3){
     
     global $qualification, $unit, $criteria, $sessionQuals;
     
-    if ($type == 'student' || $type == 'stud'){
-        $sessionQuals = isset($_SESSION['session_stu_quals'])? unserialize(urldecode($_SESSION['session_stu_quals'])) : array();
+    if ($type == 'student' || $type == 'stud'){ 
+        $sessionQuals = isset($_SESSION['session_stu_quals'])? unserialize(urldecode($_SESSION['session_stu_quals'])) : array(); 
     } elseif ($type == 'unit') {
         
         $studentUnit = false;
@@ -62,7 +63,6 @@ function _valid($type, $params, $stage=3){
         if (!$studentUnit) exit;
                 
     }
-    
     if($stage >= 1)
     {
         if ($type == 'student' || $type == 'stud'){
@@ -72,7 +72,7 @@ function _valid($type, $params, $stage=3){
                 $qualification = $sessionQuals[$params->studentID][$params->qualID]->qualification;
             } else {
                 $o = new stdClass();
-                $o->loadLevel = Qualification::LOADLEVELUNITS;
+                $o->loadLevel = Qualification::LOADLEVELALL;
                 $qualification = Qualification::get_qualification_class_id($params->qualID, $o);
                 if(!$qualification) exit;
                 $qualification->load_student_information($params->studentID, $o);
@@ -100,7 +100,10 @@ function _valid($type, $params, $stage=3){
     {
         // Load Criteria
         $criteria = $unit->get_single_criteria($params->criteriaID);
-        if(!$criteria) exit;
+        if(!$criteria)
+        {
+            exit;
+        }
     }
                 
     
@@ -110,7 +113,6 @@ switch($action)
 {
     
     case 'criteriaComment':
-        
         // Required params:
         $req = array("qualID", "criteriaID", "studentID", "comment", "element");
         

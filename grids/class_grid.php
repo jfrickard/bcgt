@@ -27,12 +27,15 @@ $PAGE->set_context($context);
 $qualID = optional_param('qID', -1, PARAM_INT);
 $studentID = optional_param('sID', -1, PARAM_INT);
 $unitID = optional_param('uID', -1, PARAM_INT);
+$groupingID = optional_param('grID', -1, PARAM_INT);
+//this is the course we are searching upon
+$sCourseID = optional_param('scID', -1, PARAM_INT);
 $clearSession = optional_param('csess', true, PARAM_BOOL);
 $qualification = null;
 if(!$clearSession)
 {
-    $sessionQuals = isset($_SESSION['session_stu_quals'])? 
-    unserialize(urldecode($_SESSION['session_stu_quals'])) : array(); 
+    $sessionQuals = isset($_SESSION['session_class_quals'])? 
+    unserialize(urldecode($_SESSION['session_class_quals'])) : array(); 
 }
 else
 {
@@ -48,13 +51,15 @@ if(array_key_exists($qualID, $sessionQuals))
 else
 {
     $loadParams = new stdClass();
+    //we need to load the entire qualification up (including criteria) so that the criteria
+    //get checked in the grid. 
     $loadParams->loadLevel = Qualification::LOADLEVELALL;
     $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
 }
 
 $url = '/blocks/bcgt/forms/class_grid.php';
 $PAGE->set_url($url, array());
-$PAGE->set_title(get_string('bcgtmydashboard', 'block_bcgt'));
+$PAGE->set_title(get_string('classoverview', 'block_bcgt'));
 $PAGE->set_heading(get_string('bcgtmydashboard', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('bcgtmydashboard', 'block_bcgt'));
@@ -64,28 +69,36 @@ $jsModule = array(
     'fullpath' => '/blocks/bcgt/js/block_bcgt.js',
     'requires' => array('base', 'io', 'node', 'json', 'event', 'button')
 );
+$link1 = null;
+if(has_capability('block/bcgt:viewclassgrids', $context))
+{
+    $link1 = $CFG->wwwroot.'/blocks/bcgt/forms/grid_select.php?&cID='.$courseID.'&g=c';
+}
+$PAGE->navbar->add(get_string('grids', 'block_bcgt'),$link1,'title');
 $PAGE->requires->js_init_call('M.block_bcgt.initgridclass', null, true, $jsModule);
 require_once($CFG->dirroot.'/blocks/bcgt/lib.php');
 load_javascript();
 $out = $OUTPUT->header();
     $out .= '<form id="classGridForm" method="POST" name="classGridForm" action="class_grid.php?">';			
-    $out .= '<input type="hidden" name="cID" value="'.$courseID.'"/>';
-    
+    $out .= '<input type="hidden" id="cID" name="cID" value="'.$courseID.'"/>';
+    $out .= '<input type="hidden" id="grID" name="grID" value="'.$groupingID.'"/>';
+    $out .= '<input type="hidden" id="scID" name="scID" value="'.$sCourseID.'"/>';
     // Menu
     $out .= '<div class="bcgtGridMenu">';
+    $out .= '';
     if(has_capability('block/bcgt:viewclassgrids', $context))
     {
         $dropDowns = "yes";
         //Drop down of other quals
-        
+        $familiesExcluded = array('CG', 'Bespoke');
         if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
         {
             $qualifications = search_qualification(-1, -1, -1, '', 
-                -1, null, -1, true, true, null); 
+                -1, null, -1, true, true, $familiesExcluded); 
         }
         else
         {
-            $qualifications = get_users_quals($USER->id);
+            $qualifications = get_users_quals($USER->id, -1, '', -1, -1, $familiesExcluded);
         }
         if($qualifications)
         {
@@ -125,16 +138,28 @@ $out = $OUTPUT->header();
     
     $heading = get_string('trackinggrid','block_bcgt');
     $heading .= " - ".$qualification->get_display_name()."";
+    $PAGE->navbar->add($qualification->get_display_name(),null,'title');
     $out .= html_writer::tag('h2', $heading, 
         array('class'=>'formheading'));
-    
+    if($groupingID != -1)
+    {
+        $groupDB = $DB->get_record_sql("SELECT * FROM {groupings} WHERE id = ?", array($groupingID));
+        if($groupDB)
+        {
+            $out .= '<h3>'.get_string("grouping", "block_bcgt").': '.
+                    $groupDB->name.' (<a href="'.$CFG->wwwroot.
+                    '/blocks/bcgt/grids/class_grid.php?cID='.$courseID.'&scID='.
+                    $sCourseID.'&qID='.$qualID.'">'.
+                    get_string("cleargroup", "block_bcgt").'</a>)</h3>';
+        }
+    }
     $out .= html_writer::start_tag('div', array('class'=>'bcgt_grid_outer', 
     'id'=>'classGridOuter'));
     //at this point we load it up into the session
     $out .= $qualification->display_subject_grid();
     
     $sessionQuals[$qualID] = $qualification;
-    $_SESSION['session_stu_quals'] = urlencode(serialize($sessionQuals));
+    $_SESSION['session_class_quals'] = urlencode(serialize($sessionQuals));
 
     $out .= html_writer::end_tag('div');
     $out .= '</form>';			

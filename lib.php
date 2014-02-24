@@ -37,11 +37,21 @@ require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Data.class.php');
 require_once($CFG->dirroot.'/blocks/bcgt/classes/core/SystemDataImport.class.php');
 require_once($CFG->dirroot.'/blocks/bcgt/classes/core/BackupImport.class.php');
 require_once($CFG->dirroot.'/blocks/bcgt/classes/core/UserVA.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Group.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Grouping.class.php');
 require_once($CFG->dirroot.'/blocks/bcgt/bclib.php');
 
 define('BCGT_NUMBER_CORE_DASH_TABS', 11);
 define('BCGT_COURSE_TAB_NUMBER', 2);
 define('BCGT_ADMIN_TAB_NUMBER', 9);
+
+//these are not widely used, but should be!
+//etxra | on end of unit to denote Bespoke that have no family
+define('BCGT_UNIT_VIEW_FAMILIES', 'BTEC|CG|Bespoke||');
+define('BCGT_CLASS_VIEW_FAMILIES', 'BTEC|ALevel');
+define('BCGT_FA_VIEW_FAMILIES', 'BTEC|ALevel');
+define('BCGT_ACTIVITYT_VIEW_FAMILIES', 'BTEC');
+
 
 /**
  * 
@@ -821,40 +831,56 @@ function search_qualification($typeID = -1, $levelID = -1, $subTypeID = -1, $sea
     $records = $DB->get_records_sql($sql, $params);
     // Bespoke cannot be done like this, there are no types, levels, etc... to join
     // Search bespoke quals as well
-    if ($familyID == 1 || $familyID == -1){
-                
-        $sql = "SELECT q.id, b.displaytype, b.subtype, b.level, q.name, q.additionalname, 1 as isbespoke, qualunits.countunits, coursequal.countcourse
-                FROM {block_bcgt_bespoke_qual} b
-                INNER JOIN {block_bcgt_qualification} q ON q.id = b.bcgtqualid
-                LEFT OUTER JOIN 
-                (
-                    SELECT bcgtqualificationid, COUNT(bcgtunitid) AS countunits
-                    FROM {block_bcgt_qual_units}
-                    group by bcgtqualificationid
-                ) AS qualunits ON qualunits.bcgtqualificationid = q.id
-                LEFT OUTER JOIN 
-                (
-                    SELECT bcgtqualificationid, COUNT(courseid) AS countcourse 
-                    FROM {block_bcgt_course_qual} AS coursequal
-                    GROUP BY bcgtqualificationid
-                ) AS coursequal ON coursequal.bcgtqualificationid = q.id
-                WHERE q.name LIKE ? OR b.displaytype LIKE ? OR b.subtype LIKE ? 
-                ORDER BY b.displaytype ASC, b.level ASC, b.subtype ASC, q.name ASC";
-        $bespoke = $DB->get_records_sql($sql, array('%'.$search.'%', '%'.$search.'%', '%'.$search.'%'));
-                        
-        if ($bespoke)
+    
+    if(($excludeFamilies && !in_array('Bespoke', $excludeFamilies)) || (!$excludeFamilies))
+    {
+        if ($familyID == 1 || $familyID == -1)
         {
-            foreach($bespoke as $bspk)
+                
+            $sql = "SELECT q.id, b.displaytype, b.subtype, b.level, q.name, q.additionalname, 1 as isbespoke, qualunits.countunits, coursequal.countcourse
+                    FROM {block_bcgt_bespoke_qual} b
+                    INNER JOIN {block_bcgt_qualification} q ON q.id = b.bcgtqualid
+                    LEFT OUTER JOIN 
+                    (
+                        SELECT bcgtqualificationid, COUNT(bcgtunitid) AS countunits
+                        FROM {block_bcgt_qual_units}
+                        group by bcgtqualificationid
+                    ) AS qualunits ON qualunits.bcgtqualificationid = q.id
+                    LEFT OUTER JOIN 
+                    (
+                        SELECT bcgtqualificationid, COUNT(courseid) AS countcourse 
+                        FROM {block_bcgt_course_qual} AS coursequal
+                        GROUP BY bcgtqualificationid
+                    ) AS coursequal ON coursequal.bcgtqualificationid = q.id
+                    WHERE (q.name LIKE ? OR b.displaytype LIKE ? OR b.subtype LIKE ?)";
+            $params = array('%'.$search.'%', '%'.$search.'%', '%'.$search.'%');
+            if($courseID > 0)
             {
-                if (!isset($records[$bspk->id])){
-                    $bspk->trackinglevel = '';
-                    $bspk->family = '';
-                    $records[$bspk->id] = $bspk;
+                $sql .= " AND ( ? IN ( SELECT sq.courseid
+                        FROM {block_bcgt_course_qual} sq
+                        WHERE sq.bcgtqualificationid = q.id ) ) ";
+                $params[] = $courseID;
+            }
+            $sql .= " ORDER BY b.displaytype ASC, b.level ASC, b.subtype ASC, q.name ASC";
+            
+            $bespoke = $DB->get_records_sql($sql, $params);
+
+            if ($bespoke)
+            {
+                foreach($bespoke as $bspk)
+                {
+                    if (!isset($records[$bspk->id])){
+                        $bspk->trackinglevel = '';
+                        $bspk->family = '';
+                        $records[$bspk->id] = $bspk;
+                    }
                 }
             }
+
         }
-        
-    }
+    }    
+    
+    
         
     return $records;
 }
@@ -1195,19 +1221,34 @@ function get_users_not_on_qual($qualID, $roleID, $search = '')
  * @param type $search
  * @return type
  */
-function get_users_bcgt($search = '')
+function get_users_bcgt($search = '', $userID = -1)
 {
     global $DB;
     $sql = "SELECT user.* FROM {user} user";
     $params = array();
+    if($search != '' || $userID != -1)
+    {
+        $sql .= " WHERE";
+    }
+    $and = false;
     if($search != '')
     {
-        $sql .= " WHERE (user.firstname LIKE ? OR user.lastname LIKE ? 
+        $sql .= " (user.firstname LIKE ? OR user.lastname LIKE ? 
             OR user.email LIKE ? OR user.username LIKE ?)";
         $params[] = '%'.$search.'%';
         $params[] = '%'.$search.'%';
         $params[] = '%'.$search.'%';
         $params[] = '%'.$search.'%';
+        $and = true;
+    }
+    if($userID != -1)
+    {
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $sql .= ' user.id = ?';
+        $params[] = $userID;
     }
     return $DB->get_records_sql($sql, $params, 0, 100);
 }
@@ -1302,7 +1343,7 @@ function get_users_users($roleID, $userID, $search = '')
  * @param type $role
  * @param string $searc
  */
-function get_role_quals($userID, $role, $search = '', $familyID = -1)
+function get_role_quals($userID, $role, $search = '', $familyID = -1, $courseID = -1)
 {
     global $DB;
     $sql = "SELECT id FROM {role} WHERE ";
@@ -1335,7 +1376,7 @@ function get_role_quals($userID, $role, $search = '', $familyID = -1)
         {
             $roles[] = $role->id;
         }
-        return get_users_quals($userID, $roles, $search, $familyID);
+        return get_users_quals($userID, $roles, $search, $familyID, $courseID);
     } 
     return false;
 }
@@ -1487,9 +1528,8 @@ function get_users_quals($userID, $roleID = -1, $search = '', $familyID = -1, $c
         $sql .= ' ORDER BY family.family DESC, subtype.subtype ASC, qual.name ASC';
     $records = $DB->get_records_sql($sql, $params);
     // Bespoke cannot be done like this, there are no types, levels, etc... to join
-    // Search bespoke quals as well
-                
-    if ($familyID == 1 || $familyID < 0)
+    // Search bespoke quals as well  
+    if ($familyID == 1 || $familyID < 0 && !in_array('Bespoke', $excludeFamilies))
     {
     
         $sql = "SELECT q.*, b.displaytype, b.subtype, b.level, 1 as isbespoke
@@ -1570,7 +1610,7 @@ function get_users_quals($userID, $roleID = -1, $search = '', $familyID = -1, $c
 function bcgt_get_users_courses($userID, $roleID, $hasQual = false, $qualID = -1, $excludeFamilies = array())
 {
     global $DB;
-    $sql = "SELECT distinct(course.id), course.* FROM {course} course
+    $sql = "SELECT distinct course.* FROM {course} course
          JOIN {context} context ON context.instanceid = course.id
             JOIN {role_assignments} roleass ON roleass.contextid = context.id 
             JOIN {user} user ON user.id = roleass.userid 
@@ -1580,10 +1620,10 @@ function bcgt_get_users_courses($userID, $roleID, $hasQual = false, $qualID = -1
         $sql .= " JOIN {block_bcgt_course_qual} coursequal ON coursequal.courseid = course.id";
         if($excludeFamilies && count($excludeFamilies) != 0)
         {
-            $sql .= ' JOIN {block_bcgt_qualification} qual ON qual.id = coursequal.bcgtqualificationid 
-                JOIN {block_bcgt_target_qual} targetqual ON targetqual.id = qual.bcgttargetqualid 
-                JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
-                JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid';
+            $sql .= ' LEFT JOIN {block_bcgt_qualification} qual ON qual.id = coursequal.bcgtqualificationid 
+                LEFT JOIN {block_bcgt_target_qual} targetqual ON targetqual.id = qual.bcgttargetqualid 
+                LEFT JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
+                LEFT JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid';
         }
     }
     $params = array($userID, $roleID);
@@ -1597,7 +1637,7 @@ function bcgt_get_users_courses($userID, $roleID, $hasQual = false, $qualID = -1
     {
         foreach($excludeFamilies AS $family)
         {
-            $sql .= ' AND family.family != ?';
+            $sql .= ' AND (family.family != ? OR family.family IS NULL)';
             $params[] = $family;
         }
     }
@@ -1685,13 +1725,23 @@ function bcgt_get_users_course_access($userID, $hasQual = false, $includeHidden 
     return $records;
 }
 
-function bcgt_get_users_assessments($userID, $roleID, $search)
+function bcgt_get_users_assessments($userID, $roleID, $search, 
+        $qualID = -1, $courseID = -1, $groupID = -1)
 {
     global $DB;
     $sql = "SELECT distinct(project.id), project.* FROM {block_bcgt_project} project 
         JOIN {block_bcgt_activity_refs} activityrefs ON activityrefs.bcgtprojectid = project.id 
-        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = activityrefs.bcgtqualificationid 
-        WHERE userqual.roleid = ? AND userqual.userid = ?";
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = activityrefs.bcgtqualificationid"; 
+
+    if($courseID != -1)
+    {
+        $sql .= ' JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = activityrefs.bcgtqualificationid ';
+    }
+    if($groupID != -1)
+    {
+        $sql .= ' JOIN {groups_members} members ON members.userid = userqual.userid';
+    }
+    $sql .= ' WHERE userqual.roleid = ? AND userqual.userid = ?';
     $params = array($roleID, $userID);
     if($search != '')
     {
@@ -1708,10 +1758,94 @@ function bcgt_get_users_assessments($userID, $roleID, $search)
         }
         $sql .= ')';
     }
+    if($qualID != -1)
+    {
+        $sql .= ' AND activityrefs.bcgtqualificationid = ?';
+        $params[] = $qualID;
+    }
+    if($courseID != -1)
+    {
+        $sql .= ' AND coursequal.courseid = ?';
+        $params[] = $courseID;
+    }
+    if($groupID != -1)
+    {
+        $sql .= ' members.groupid = ?';
+        $params[] = $groupID;
+    }
     return $DB->get_records_sql($sql, $params);
 }
 
-function bcgt_get_users_units($userID, $roleID, $search)
+function bcgt_get_users_activities($userID = -1, $roleID = -1, $qualID = -1, $courseID = -1, $search = '', $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id";
+        if($courseID != -1)
+        {
+            $sql .= " AND cmods.course = ?";
+        }
+        $sql .= " AND cmods.instance = items.iteminstance
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid";   
+    $sql .= " WHERE items.itemtype=? AND mods.visible = ? AND cmods.visible = ?";
+    $params = array();
+    if($courseID != -1)
+    {
+        $params[] = $courseID;
+    }
+    $params[] = 'mod';
+    $params[] = 1;
+    $params[] = 1;
+    if($userID != -1)
+    {
+        $sql .= " AND userqual.userid = ?";
+        $params[] = $userID;
+    }
+    if($roleID != -1)
+    {
+        $sql .= " AND userqual.roleid = ?";
+        $params[] = $roleID;
+    }
+    if($courseID != -1)
+    {
+        $sql .= " AND items.courseid = ?";
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $sql .= " AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    if($search != '')
+    {
+        $sql .= ' AND (items.itemname LIKE ?';
+        $params[] = '%'.$search.'%';
+        $searchSplit = explode(' ', $search);
+        if($searchSplit)
+        {
+            foreach($searchSplit AS $split)
+            {
+                $sql .= ' OR items.itemname LIKE ?';
+                $params[] = '%'.$split.'%';
+            }
+        }
+        $sql .= ')';
+    }
+    if($cmID != -1)
+    {
+        $sql .= ' AND cmods.id = ?';
+        $params[] = $cmID;
+    }
+            
+    return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_users_units($userID, $roleID, $search, $qualID = -1)
 {
     global $DB;
     $sql = "SELECT distinct(unit.id), unit.* FROM {block_bcgt_unit} unit 
@@ -1735,6 +1869,11 @@ function bcgt_get_users_units($userID, $roleID, $search)
             }
         }
         $sql .= ')';
+    }
+    if($qualID != -1)
+    {
+        $sql .= ' AND qualunits.bcgtqualificationid = ?';
+        $params[] = $qualID;
     }
     return $DB->get_records_sql($sql, $params);
 }
@@ -2411,34 +2550,68 @@ function bcgt_get_old_students_still_on_qual($courseID, $quals)
  * @param type $courseID
  * @return type
  */
-function bcgt_get_course_quals($courseID, $familyID = -1, $qualID = -1, $excludeFamilies = array(), $search = '')
+function bcgt_get_course_quals($courseID, $familyID = -1, $qualID = -1, 
+        $excludeFamilies = array(), $search = '', $groupingID = -1)
 {
     global $DB;
-    $sql = "SELECT qual.id, family.family, level.trackinglevel, level.id as levelid , subtype.subtype, subtype.subtypeshort,  
+    $sql = "SELECT distinct(qual.id), family.family, level.trackinglevel, level.id as levelid , subtype.subtype, subtype.subtypeshort,  
         qual.name, qual.additionalname FROM {block_bcgt_course_qual} coursequal 
         JOIN {block_bcgt_qualification} qual ON qual.id = coursequal.bcgtqualificationid 
         JOIN {block_bcgt_target_qual} targetqual ON targetqual.id = qual.bcgttargetqualid 
         JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
         JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid 
         JOIN {block_bcgt_level} level ON level.id = targetqual.bcgtlevelid 
-        JOIN {block_bcgt_subtype} subtype ON subtype.id = targetqual.bcgtsubtypeid 
-        WHERE coursequal.courseid = ?
-        ";
-
-    $params = array($courseID);
+        JOIN {block_bcgt_subtype} subtype ON subtype.id = targetqual.bcgtsubtypeid";
+    if($groupingID != -1)
+    {
+        $sql .= ' JOIN {groups} g ON g.courseid = coursequal.courseid 
+            JOIN {groups_members} members ON members.groupid = g.id 
+            JOIN {block_bcgt_user_qual} userqual ON userqual.userid = members.userid 
+            AND userqual.bcgtqualificationid = qual.id 
+            JOIN {groupings_groups} gg ON gg.groupid = g.id';
+    }
+    if($courseID != -1 || $familyID != -1 || $qualID != -1 || 
+            ($excludeFamilies && count($excludeFamilies) != 0) || 
+            $search != '' || $groupingID != -1)
+    {
+        $sql .= ' WHERE';
+    }
+    $params = array();
+    $and = false;
+    if($courseID != -1)
+    {
+        $sql .= " coursequal.courseid = ?
+       ";
+        $and = true;
+        $params[] = $courseID;
+    }
     if($familyID != -1)
     {
-        $sql .= ' AND type.bcgttypefamilyid = ?';
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $and = true;
+        $sql .= ' type.bcgttypefamilyid = ?';
         $params[] = $familyID;
     }
     if($qualID != -1)
     {
-        $sql .= ' AND qual.id = ?';
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $and = true;
+        $sql .= ' qual.id = ?';
         $params[] = $qualID;
     }
     if($excludeFamilies && count($excludeFamilies) != 0)
     {
-        $sql .= ' AND';
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $and = true;
         $count = 0;
         foreach($excludeFamilies AS $family)
         {
@@ -2454,7 +2627,12 @@ function bcgt_get_course_quals($courseID, $familyID = -1, $qualID = -1, $exclude
     }
     if($search != '')
     {
-        $sql .= ' AND (qual.name LIKE ?';
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $and = true;
+        $sql .= ' (qual.name LIKE ?';
         $params[] = '%'.$search.'%';
         $seachSplit = explode(' ', $search);
         if($seachSplit)
@@ -2466,6 +2644,16 @@ function bcgt_get_course_quals($courseID, $familyID = -1, $qualID = -1, $exclude
             }
         }
         $sql .= ')';
+    }
+    if($groupingID != -1)
+    {
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $and = true;
+        $sql .= ' gg.groupingid = ?';
+        $params[] = $groupingID;
     }
     $records = $DB->get_records_sql($sql, $params);
     
@@ -2529,7 +2717,7 @@ function bcgt_get_qual_courses($qualID)
 function bcgt_get_course_units($courseID, $familyID = -1)
 {
     global $DB;
-    $sql = "SELECT unit.* FROM {block_bcgt_course_qual} coursequal 
+    $sql = "SELECT distinct(unit.id), unit.* FROM {block_bcgt_course_qual} coursequal 
         JOIN {block_bcgt_qualification} qual ON qual.id = coursequal.bcgtqualificationid 
         JOIN {block_bcgt_target_qual} targetqual ON targetqual.id = qual.bcgttargetqualid 
         JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
@@ -2549,20 +2737,211 @@ function bcgt_get_course_units($courseID, $familyID = -1)
     return $DB->get_records_sql($sql, $params);
 }
 
-
-function bcgt_unit_activities($courseID, $unitID, $moduleName = 'assign', 
-        $orderBy = '', $extraField = '')
+function bcgt_get_max_activity_units($unitIDs, $userID = -1)
 {
     global $DB;
-    $sql = "SELECT distinct(cm.id), cm.*, m.id as mid, m.name as modname $extraField 
-        FROM {block_bcgt_activity_refs} activity 
-        JOIN {course_modules} cm ON cm.id = activity.coursemoduleid
-        JOIN {modules} md ON md.id = cm.module 
-        JOIN {".$moduleName."} m ON m.id = cm.instance 
-        WHERE cm.course = ? AND md.name = ? AND activity.bcgtunitid = ?
-        ";
-        $params = array($courseID, $moduleName, $unitID);
+    $sql = "SELECT MAX(count) as maxcount FROM (
+        SELECT refs.bcgtunitid, count(distinct(refs.coursemoduleid)) as count 
+        FROM {block_bcgt_activity_refs} refs";
+    if($userID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_user_unit} userunit ON userunit.bcgtunitid = refs.bcgtunitid";
+    }
+    $sql .= " WHERE refs.bcgtunitid IN (";
+    $params = array();
+    $count = 0;
+    foreach($unitIDs AS $id)
+    {
+        $count++;
+        $sql .= '?';
+        if(count($unitIDs) != $count)
+        {
+            $sql .= ',';
+        }
+        $params[] = $id;
+    }
+    $sql .= ")";
+    if($userID != -1)
+    {
+        $sql .= " AND userunit.userid = ?";
+        $params[] = $userID;
+    }
+    $sql .= " GROUP BY refs.bcgtunitid) as activitycount";
+    return $DB->get_record_sql($sql, $params);
+}
+
+function bcgt_get_max_units_activity($courseModuleIDs, $userID = -1)
+{
+    global $DB;
+    $sql = "SELECT MAX(count) as maxcount FROM (
+        SELECT refs.coursemoduleid, count(distinct(refs.bcgtunitid)) as count 
+        FROM {block_bcgt_activity_refs} refs";
+    if($userID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_user_unit} userunit ON userunit.bcgtunitid = refs.bcgtunitid";
+    }  
+    $sql .= " WHERE refs.coursemoduleid IN (";
+    $params = array();
+    $count = 0;
+    foreach($courseModuleIDs AS $id)
+    {
+        $count++;
+        $sql .= '?';
+        if(count($courseModuleIDs) != $count)
+        {
+            $sql .= ',';
+        }
+        $params[] = $id;
+    }
+    $sql .= ")";
+    if($userID != -1)
+    {
+        $sql .= " AND userunit.userid = ?";
+        $params[] = $userID;
+    }
+    $sql .= " GROUP BY refs.coursemoduleid) as unitcount";
+    return $DB->get_record_sql($sql, $params);
+}
+
+function bcgt_user_activities($qualID, $userID, $unitID = -1)
+{
+    //need to check the user is actually on the course
+    //that this activity is on
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        AND cmods.instance = items.iteminstance
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id 
+        JOIN {block_bcgt_user_qual} userquals ON userquals.bcgtqualificationid = refs.bcgtqualificationid
+        JOIN {context} con ON con.instanceid = cmods.course 
+        JOIN {role_assignments} ra ON ra.contextid = con.id 
+        WHERE refs.bcgtqualificationid = ? AND userquals.userid = ? AND mods.visible = ? AND ra.userid = ?";
+    $params = array();
+    $params[] = $qualID;
+    $params[] = $userID;
+    $params[] = 1;
+    $params[] = $userID;
+    if($unitID != -1)
+    {
+        $sql .= ' AND refs.bcgtunitid = ?';
+        $params[] = $unitID;
+    }
+    if(get_config('bcgt','modstrackercheckcoursevisible'))
+    {
+        //if we are checking for visibility
+        $sql .= ' AND cmods.visible = ?';
+        $params[] = 1;
+    }
+    $retval = array();
+    $mods = $DB->get_records_sql($sql, $params);
+    if($mods)
+    {
+        //we need to check for grouping
+        foreach($mods AS $mod)
+        {
+            if($mod->groupingid)
+            {
+                //then we need to check for grouping.
+                if(bcgt_is_user_in_grouping($userID, $mod->groupingid))
+                {
+                    $retval[$mod->id] = $mod;
+                }
+            }
+            else
+            {
+                $retval[$mod->id] = $mod;
+            }
+        }
+    }
+    return $retval;
+}
+
+function bcgt_is_user_in_grouping($userID, $groupingID)
+{
+    global $DB;
+    $sql = "SELECT * FROM {groups_members} members 
+        JOIN {groupings_groups} gg ON gg.groupid = members.groupid 
+        WHERE gg.groupingid = ? AND members.userid = ?";
+    $params = array();
+    $params[] = $groupingID;
+    $params[] = $userID;
+    //user could be on more than one group in the grouping!
     return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_unit_activities($courseID = -1, $unitID = -1, $qualID = -1, $groupingID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid   
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        AND cmods.instance = items.iteminstance
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id";
+    if($courseID != -1 || $unitID != -1)
+    {
+        $and = false;
+        $sql .= ' WHERE';
+        if($courseID != -1)
+        {
+            $sql .= ' cmods.course = ?';
+            $params[] = $courseID;
+            $and = true;
+        }
+        if($unitID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            }
+            $sql .= ' refs.bcgtunitid = ?';
+            $and = true;
+            $params[] = $unitID;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            }
+            $sql .= ' refs.bcgtqualificationid = ?';
+            $and = true;
+            $params[] = $qualID;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= ' cmods.groupingid = ?';
+            $and = true;
+            $params[] = $groupingID;
+        }
+            
+    }
+    return $DB->get_records_sql($sql, $params);
+    
+//    
+//    
+//    
+//    
+//    global $DB;
+//    $sql = "SELECT distinct(cm.id), cm.*, m.id as mid, m.name as modname $extraField 
+//        FROM {block_bcgt_activity_refs} activity 
+//        JOIN {course_modules} cm ON cm.id = activity.coursemoduleid
+//        JOIN {modules} md ON md.id = cm.module 
+//        JOIN {".$moduleName."} m ON m.id = cm.instance 
+//        WHERE cm.course = ? AND md.name = ? AND activity.bcgtunitid = ?
+//        ";
+//        $params = array($courseID, $moduleName, $unitID);
+//    return $DB->get_records_sql($sql, $params);
 }
 
 function get_grid_menu($studentID, $unitID, $qualID = -1, $courseID = -1)
@@ -2577,10 +2956,14 @@ function get_grid_menu($studentID, $unitID, $qualID = -1, $courseID = -1)
     {
         $context = context_course::instance($COURSE->id);
     }
-    
+    $qualification = null;
     $load = new stdClass();
-    $load->loadLevel = Qualification::LOADLEVELMIN;
-    $qualification = Qualification::get_qualification_class_id($qualID, $load);
+    if($qualID != -1)
+    {
+        $load->loadLevel = Qualification::LOADLEVELMIN;
+        $qualification = Qualification::get_qualification_class_id($qualID, $load);
+    }
+    
     
     //KD-debug
     //echo '<br />qualID=';
@@ -3124,6 +3507,12 @@ function load_unit_class($unitID)
     $record = $DB->get_record_sql($sql, array($unitID));
     if($record)
     {
+        $file = $CFG->dirroot."/blocks/bcgt/plugins/bcgt".strtolower($record->family)."/lib.php";
+        //also need to load the lib of the family. 
+        if(file_exists($file))
+        {
+            require_once($file);
+        }
         require_once($CFG->dirroot.$record->classfolderlocation."/".$record->family."Unit.class.php");
     }
 }
@@ -3148,15 +3537,47 @@ function load_qual_class($qualID)
 }
 
 //AND where the user is on the qual!
-function get_users_on_unit_qual($unitID, $qualID)
+function get_users_on_unit_qual($unitID, $qualID = -1, $courseID = -1, $groupingID = -1)
 {
     global $DB;
-    $sql = "SELECT user.* FROM {block_bcgt_user_unit} userunit 
+    $sql = "SELECT distinct(user.id), user.* FROM {block_bcgt_user_unit} userunit 
         JOIN {user} user ON user.id = userunit.userid 
-        JOIN {block_bcgt_user_qual} userqual ON userqual.userid = user.id AND userqual.bcgtqualificationid = ?
-        WHERE userunit.bcgtunitid = ? AND userunit.bcgtqualificationid = ? AND user.deleted != 1 
-        ORDER BY user.lastname, user.firstname, user.username";
-    return $DB->get_records_sql($sql, array($qualID, $unitID, $qualID));
+        JOIN {block_bcgt_user_qual} userqual ON userqual.userid = user.id ";
+    $params = array();
+    if($qualID != -1)
+    {
+        $sql .= " AND userqual.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    if($courseID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = userqual.bcgtqualificationid";
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " JOIN {groups_members} members ON members.userid = userunit.userid 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    }
+    $sql .= " WHERE userunit.bcgtunitid = ? AND user.deleted != ?"; 
+    $params[] = $unitID;
+    $params[] = 1;
+    if($qualID != -1)
+    {
+        $sql .= " AND userunit.bcgtqualificationid = ? ";  
+        $params[] = $qualID;
+    }
+    if($courseID != -1)
+    {
+        $sql .= " AND coursequal.courseid = ?";
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND gg.groupingid = ?";
+        $params[] = $groupingID;
+    }   
+    $sql .= " ORDER BY user.lastname ASC, user.firstname ASC, user.username ASC";
+    return $DB->get_records_sql($sql, $params);
 }
 
 /**
@@ -3403,7 +3824,7 @@ function get_plugin_name($familyID)
     return false;
 }
 
-function get_course_qual_families($courseID)
+function get_course_qual_families($courseID, $includeFamilies = array())
 {
     global $DB;
     $sql = "SELECT distinct(family.id), type.*, family.* FROM {block_bcgt_type} type
@@ -3412,7 +3833,20 @@ function get_course_qual_families($courseID)
         JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = qual.id 
         JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid
         WHERE coursequal.courseid = ?";
-    return $DB->get_records_sql($sql, array($courseID));
+    $params = array();
+    $params[] = $courseID;
+    if($includeFamilies && count($includeFamilies) != 0)
+    {
+        $count = 0;
+        foreach($includeFamilies AS $family)
+        {
+            $count++;
+            $sql .= ' AND family.family = ?';
+            $params[] = $family;
+        }
+    }
+    
+    return $DB->get_records_sql($sql, $params);
 }
 
 function insert_activity_onto_unit($record)
@@ -3427,7 +3861,6 @@ function insert_activity_onto_unit($record)
 
 function delete_activity_from_unit($cmID, $unitID)
 {
-    echo $cmID." ".$unitID;
     global $DB;
     $DB->delete_records('block_bcgt_activity_refs', array('coursemoduleid'=>$cmID, 
          'bcgtunitid'=>$unitID));
@@ -3450,7 +3883,7 @@ function delete_activity_by_criteria_from_unit($cmID, $criteriaID, $unitID)
 function get_activity_criteria($cmID, $quals = null, $unitID = -1)
 {
     global $DB;
-    $sql = "SELECT criteria.* FROM {block_bcgt_criteria} criteria 
+    $sql = "SELECT distinct(criteria.id), criteria.* FROM {block_bcgt_criteria} criteria 
         JOIN {block_bcgt_activity_refs} refs ON refs.bcgtcriteriaid = criteria.id 
         WHERE refs.coursemoduleid = ?";
     $params = array($cmID);
@@ -3476,6 +3909,76 @@ function get_activity_criteria($cmID, $quals = null, $unitID = -1)
         $params[] = $unitID;
     }
     return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_mod_unit_criteria($courseID = -1, $qualID = -1, 
+            $groupingID = -1, $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT refs.id, refs.bcgtunitid, refs.bcgtcriteriaid, crit.name as critname, refs.coursemoduleid 
+        FROM {block_bcgt_activity_refs} refs 
+        JOIN {block_bcgt_criteria} crit ON crit.id = refs.bcgtcriteriaid";
+    if($courseID != -1 || $groupingID != -1)
+    {
+        $sql .= " JOIN {course_modules} mods ON mods.id = refs.coursemoduleid";
+    }
+    $params = array();
+    if($courseID != -1 || $qualID != -1 || $groupingID != -1)
+    {
+        $and = false; 
+        $sql .= " WHERE";
+        if($courseID != -1)
+        {
+            $sql .= " mods.course = ?";
+            $params[] = $courseID;
+            $and = true;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= " refs.bcgtqualificationid = ?";
+            $params[] = $qualID;
+            $and = true;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= " mods.groupingid = ?";
+            $params[] = $groupingID;
+            $and = true;
+        }
+    }
+    if($cmID != -1)
+    {
+        $sql .= " AND refs.coursemoduleid = ?";
+        $params[] = $cmID;
+    }
+    $records = $DB->get_records_sql($sql, $params);
+    if($records)
+    {
+        $retval = array();
+        foreach($records AS $record)
+        {
+            if(array_key_exists($record->bcgtunitid, $retval))
+            {
+                $criteriaArray = $retval[$record->bcgtunitid];
+            }
+            else
+            {
+                $criteriaArray = array();
+            }
+            $criteriaArray[$record->bcgtcriteriaid] = $record->critname;
+            $retval[$record->bcgtunitid] = $criteriaArray;
+        }
+        return $retval;
+    }
+    return false;
 }
 
 /**
@@ -3521,6 +4024,409 @@ function get_activity_units_criteria($cmID, $unitID)
     return $DB->get_records_sql($sql, array($cmID, $unitID));
 }
 
+function bcgt_get_coursemodules_types_in_course($courseID = -1, $qualID = -1, 
+        $groupingID = -1, $criteriaID = -1, $unitID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(mods.id), mods.* FROM {modules} mods 
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id";
+    $params = array();
+    if($courseID != -1 || $qualID != -1 || $groupingID != -1 
+            || $criteriaID != -1 || $unitID != -1)
+    {
+        $sql .= " WHERE";
+        $and = false;
+        if($courseID != -1)
+        {
+            $sql .= " cmods.course = ?";
+            $and = true;
+            $params[] = $courseID;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= " refs.bcgtqualificationid = ?";
+            $and = true;
+            $params[] = $qualID;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= " cmods.groupingid = ?";
+            $params[] = $groupingID;
+            $and = true;
+        }
+        if($criteriaID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $and = true;
+            $sql .= " refs.bcgtcriteriaid = ?";
+            $params[] = $criteriaID;
+        }
+        if($unitID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $sql .= " refs.bcgtunitid = ?";
+            $params[] = $unitID;
+            $and = true;
+        }
+        
+    }
+    return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_activity_mod_details($cmID)
+{
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        AND cmods.instance = items.iteminstance
+        WHERE cmods.id = ?";
+    $params = array();
+    $params[] = $cmID;
+    return $DB->get_record_sql($sql, $params);
+}
+
+function get_criteria_distinct_mods($criteriaID, $courseID = -1, $qualID = -1, 
+                                    $groupingID = -1)
+{
+    global $DB;
+    $sql = "SELECT mods.name as name, count(mods.name) as count FROM {modules} mods 
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id 
+        WHERE refs.bcgtcriteriaid = ? ";
+    $params = array();
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $sql .= " AND cmods.course = ?";
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $sql .= " AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND cmods.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    $sql .= " GROUP BY mods.name";
+    return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_coursemodules_in_course($courseID, $qualID = -1, $groupingID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        AND cmods.course = ? AND cmods.instance = items.iteminstance";
+    if($qualID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id";
+    }    
+    $sql .= " WHERE items.courseid = ? AND items.itemtype=? AND mods.visible = ? AND cmods.visible = ?";
+    $params = array($courseID, $courseID, 'mod', 1, 1);
+    if($groupingID != -1)
+    {
+        $sql .= " AND cmods.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($qualID != -1)
+    {
+        $sql .= " AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_quals_on_course_modules($courseID = -1, $groupingID = -1, 
+        $search = '', $userID = -1, $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(qual.id), qual.* FROM {block_bcgt_qualification} qual 
+        JOIN {block_bcgt_activity_refs} refs ON refs.bcgtqualificationid = qual.id 
+        JOIN {course_modules} cmods ON cmods.id = refs.coursemoduleid 
+        JOIN {modules} mods ON mods.id = cmods.module 
+        JOIN {course} course ON course.id = cmods.course
+        JOIN {grade_items} items ON items.itemmodule = mods.name AND cmods.instance = items.iteminstance 
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid 
+        ";
+    $params = array();
+    $sql .= " WHERE items.itemtype = ? AND mods.visible = ? AND cmods.visible = ?";
+    $params[] = 'mod';
+    $params[] = 1;
+    $params[] = 1;
+    if($courseID != -1)
+    {
+        $sql .= " AND items.courseid = ? AND cmods.course = ?";
+        $params[] = $courseID;
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND cmods.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($search != '')
+    {
+        $sql .= ' AND (items.itemname LIKE ?';
+        $params[] = '%'.$search.'%';
+        $searchSplit = explode(' ', $search);
+        if($searchSplit)
+        {
+            foreach($searchSplit AS $split)
+            {
+                $sql .= ' OR items.itemname LIKE ?';
+                $params[] = '%'.$split.'%';
+            }
+        }
+        $sql .= ')';
+    }
+    if($userID != -1)
+    {
+        $sql .= ' AND userqual.userid = ?';
+        $params[] = $userID;
+    }
+    if($cmID != -1)
+    {
+        $sql .= " AND cmods.id = ?";
+        $params[] = $cmID;
+    }
+    return $DB->get_records_sql($sql, $params);
+}
+
+function bcgt_get_coursemodules($courseID = -1, $qualID = -1, $groupingID = -1, 
+        $search = '', $userID = -1, $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid, 
+        course.shortname as shortname, course.fullname as fullname
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id";
+    $params = array();
+    if($courseID != -1)
+    {
+        $sql .= " AND cmods.course = ?";
+        $params[] = $courseID;
+    }
+    $sql .= " AND cmods.instance = items.iteminstance";  
+    $sql .= " JOIN {course} course ON course.id = cmods.course 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid ";
+    $sql .= " WHERE items.itemtype = ? AND mods.visible = ? AND cmods.visible = ?";
+    $params[] = 'mod';
+    $params[] = 1;
+    $params[] = 1;
+    if($courseID != -1)
+    {
+        $sql .= " AND items.courseid = ?";
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND cmods.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($qualID != -1)
+    {
+        $sql .= " AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    if($search != '')
+    {
+        $sql .= ' AND (items.itemname LIKE ?';
+        $params[] = '%'.$search.'%';
+        $searchSplit = explode(' ', $search);
+        if($searchSplit)
+        {
+            foreach($searchSplit AS $split)
+            {
+                $sql .= ' OR items.itemname LIKE ?';
+                $params[] = '%'.$split.'%';
+            }
+        }
+        $sql .= ')';
+    }
+    if($userID != -1)
+    {
+        $sql .= ' AND userqual.userid = ?';
+        $params[] = $userID;
+    }
+    if($cmID != -1)
+    {
+        $sql .= " AND cmods.id = ?";
+        $params[] = $cmID;
+    }
+        
+    return $DB->get_records_sql($sql, $params);
+}
+
+function count_courses_qual_activities($courseID = -1, $qualID = -1, $groupingID = -1, 
+        $search = '', $userID = -1, $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT COUNT(distinct(cmods.course)) as count 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid ";
+    $params = array();
+    if($courseID != -1 || $qualID != -1 || $groupingID != -1 ||
+            $search != '' || $userID != -1 || $cmID != -1)
+    {
+        $sql .= " WHERE";
+        $and = false;
+        if($courseID != -1)
+        {
+            $sql .= " cmods.course = ?";
+            $params[] = $courseID;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            } 
+            $and = true;
+            $sql .= " refs.bcgtqualificationid = ?";
+            $params[] = $qualID;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            }   
+            $and = true;
+            $sql .= " cmods.groupingid = ?";
+            $params[] = $groupingID;
+        } 
+        if($search != '')
+        {
+            $sql .= ' AND (items.itemname LIKE ?';
+            $params[] = '%'.$search.'%';
+            $searchSplit = explode(' ', $search);
+            if($searchSplit)
+            {
+                foreach($searchSplit AS $split)
+                {
+                    $sql .= ' OR items.itemname LIKE ?';
+                    $params[] = '%'.$split.'%';
+                }
+            }
+            $sql .= ')';
+        }
+        if($userID != -1)
+        {
+            $sql .= ' AND userqual.userid = ?';
+            $params[] = $userID;
+        }
+        if($cmID != -1)
+        {
+            $sql .= " AND cmods.id = ?";
+            $params[] = $cmID;
+        }
+    }
+    return $DB->get_record_sql($sql, $params);
+}
+
+function count_qual_activities($courseID = -1, $qualID = -1, $groupingID = -1, 
+        $search = '', $userID = -1, $cmID = -1)
+{
+    global $DB;
+    $sql = "SELECT COUNT(distinct(refs.bcgtqualificationid)) as count 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid ";
+    $params = array();
+    if($courseID != -1 || $qualID != -1 || $groupingID != -1 ||
+            $search != '' || $userID != -1 || $cmID != -1)
+    {
+        $sql .= " WHERE";
+        $and = false;
+        if($courseID != -1)
+        {
+            $sql .= " cmods.course = ?";
+            $params[] = $courseID;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            } 
+            $and = true;
+            $sql .= " refs.bcgtqualificationid = ?";
+            $params[] = $qualID;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            }   
+            $and = true;
+            $sql .= " cmods.groupingid = ?";
+            $params[] = $groupingID;
+        } 
+        if($search != '')
+        {
+            $sql .= ' AND (items.itemname LIKE ?';
+            $params[] = '%'.$search.'%';
+            $searchSplit = explode(' ', $search);
+            if($searchSplit)
+            {
+                foreach($searchSplit AS $split)
+                {
+                    $sql .= ' OR items.itemname LIKE ?';
+                    $params[] = '%'.$split.'%';
+                }
+            }
+            $sql .= ')';
+        }
+        if($userID != -1)
+        {
+            $sql .= ' AND userqual.userid = ?';
+            $params[] = $userID;
+        }
+        if($cmID != -1)
+        {
+            $sql .= " AND cmods.id = ?";
+            $params[] = $cmID;
+        }
+    }
+    return $DB->get_record_sql($sql, $params);
+}
+
 function bcgt_html($str, $nl2br = false){
     if ($nl2br) return nl2br( htmlspecialchars($str, ENT_QUOTES) );
     else return htmlspecialchars($str, ENT_QUOTES);
@@ -3538,53 +4444,220 @@ function event_handle_user_enrolled($eventData){
     echo "Event Handle User Enrolled in <br />";
     global $DB;
     
-    // Check if we have this setting enabled
-    $setting = get_config('bcgt', 'autoenrolusers');
-    if ($setting != '1') return true;
-    
-    
-        
     $userID = $eventData->userid;
     $courseID = $eventData->courseid;
-        
-    $quals = $DB->get_records("block_bcgt_course_qual", array("courseid" => $courseID));
-    if (!$quals) return true;
-        
+    
     // Enrol id is wrong, it brings down the default role not the actual role_assignment
     $context = $DB->get_record("context", array("contextlevel" => CONTEXT_COURSE, "instanceid" => $courseID));
     if (!$context) return true; # Has to eb true or the event won't ever work again...
     
     $ra = $DB->get_record("role_assignments", array("contextid" => $context->id, "userid" => $userID));
     if (!$ra) return true;
-        
+    
     $roleID = $ra->roleid;
+    $role = ($roleID == 5) ? 'student' : 'teacher';
+    
+    //now we need to do the group:
+    //config: Use cron events to keep groups up to date with new enrolments
+    $group = new Group();
+    $grouping = new Grouping();
+    if(get_config('bcgt', 'usegroupsingradetracker') && get_config('bcgt', 'usecrongroupsync'))
+    {
+        mtrace("Attempting Groups");
+        $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($courseID));
+        //is it a student?
+        if($role == 'student')
+        {
+//            mtrace("Attempting Student");
+            //Student:
+            //Add student to whole group for course
+            $groupID = $group->check_create_add_user_group($courseID, $course->shortname, $userID);
+            $grouping->create_grouping_and_add_group($courseID, $course->shortname, $groupID);
+            //find children
+            $children = bcgt_get_child_courses($courseID);
+            if($children)
+            {
+//                mtrace("Course has child courses :".count($children));
+                foreach($children AS $child)
+                {
+                    $appendName = $group->get_meta_course_group_name_string($child->id);
+//                    mtrace($child->id." IS Child ID");
+                    $group->duplicate_groups_and_groupings_between_courses($child->id, $courseID, $appendName);
+                }
+//                mtrace("Done child courses");
+            }
+             
+            //find meta
+                    //does the meta course have all groups from this course?
+                    //if not
+                    //create and add correct students
+            $metas = bcgt_get_meta_courses($courseID);  
+            if($metas)
+            {
+                $appendName = $group->get_meta_course_group_name_string($courseID);
+//                mtrace("Course has meta courses");
+                foreach($metas AS $meta)
+                {
+                    $group->duplicate_groups_and_groupings_between_courses($courseID, $meta->id, $appendName);
+                }
+//                mtrace("Done meta courses");
+            }
+            else
+            {
+//                mtrace("No Meta Courses so skipping");
+            }
+//            mtrace("Finished student group bcgt enrolment");
+        }
+        elseif($role == 'teacher')
+        {
+//            mtrace("Attempting Teacher");
+            //is it a teacher or non ediing teacher?
+            //staff:
+            //does course have qual
+                //yes
+                //add staff to course group pref 
+            //find meta courses
+                //does course have qual
+                //yes
+                //is staff on this course?
+                //yes
+                //does staff have any groups already from this course?
+                //no
+                //add staff to all groups
+            if(bcgt_get_course_quals($courseID))
+            {
+//                mtrace("This course has a qualification, so adding user");
+                //we know that staff is on this course:
+                //does staff have any groups already from this course?
+                $staffPrefGroups = $group->get_user_bcgt_group_prefs(-1, -1, $courseID, $userID);
+                if($staffPrefGroups)
+                {
+                    //they already have preferances for this course
+                    //lets just skip
+                }
+                else
+                {
+                    //they dont
+                    //so lets add them to the pref of entire course
+//                    mtrace("Attempting to find Group on course with: $courseID, $course->shortname This is the whole course group");
+                    $groupOnCourse = $group->get_group_on_course($courseID, $course->shortname);
+                    if($groupOnCourse)
+                    {
+//                        mtrace("Adding user to Group Pref: $groupOnCourse->id, $courseID, $userID");
+                        $group->add_user_bcgt_group_pref($groupOnCourse->id, $courseID, $userID);
+                    }
+                        
+                }
+            }
+//            mtrace("Add staff to meta course groups");
+            $group->add_staf_to_meta_course_group_prefs($courseID, $userID, $course->shortname);
+        }
+        else
+        {
+//            mtrace("Role was: $role");
+        }
+        mtrace("Done Groups");
+    }
+    
+    // Check if we have this setting enabled
+    $setting = get_config('bcgt', 'autoenrolusers');
+    if ($setting != '1') return true;
+  
+    $quals = $DB->get_records("block_bcgt_course_qual", array("courseid" => $courseID));
+    if (!$quals) return true;
+
     $qualIDs = array();
     
     foreach($quals as $qual){
         $qualIDs[] = $qual->bcgtqualificationid;
     }
     echo count($quals)." Quals to be enrolled on Course".$courseID."<br />";   
-    $role = ($roleID == 5) ? 'student' : 'teacher';
-    
+ 
     add_qual_user($qualIDs, $roleID, $userID, $role);
     mtrace("added userid {$userID} to qualids " . implode(",", $qualIDs));
+
+    mtrace("END bcgt user enroled hook");
     return true;
-    
-    
 }
 
 
 function event_handle_user_unenrolled($eventData){
     
-    global $DB;
-        
-    // Check if we have this setting enabled
-    $setting = get_config('bcgt', 'autounenrolusers');
-    if ($setting != '1') return true;
+    global $DB; 
     
+    //now we need to do the group:
+    //is it a student?
+    //is it a teacher or non ediing teacher?
+    //
+
     $userID = $eventData->userid;
     $courseID = $eventData->courseid;
+
+    $group = new Group();
+    if(get_config('bcgt', 'usegroupsingradetracker') && get_config('bcgt', 'usecrongroupsync'))
+    {
+//        mtrace("Attempting Groups");
+        //is it a student? 
+        //staff:
+            //does course have qual
+                //yes
+                //remove staff from course group pref 
+            //find meta courses
+                //does course have qual
+                //yes
+                //is staff on this course?
+                //yes
+                //remove staff from course group pref
+            if(bcgt_get_course_quals($courseID))
+            {
+//                mtrace("Course has quals. Remove staff pref");
+                //we know that staff was on this course:
+                //remove the staff from any of the groups on this course. 
+                $group->remove_user_bcgt_pref_from_all_groups_on_course($courseID, $userID);
+            }
+//            mtrace("Process Meta Course group prefs");
+            $group->remove_staff_from_meta_course_group_prefs($courseID, $userID);
+            
+            
+            //all
+        //get course
+            //any empty groups?
+            //any empty groupings?
+        //find metas
+            //any empty groups?
+            //any empty groupings?
+        //find child
+            //any empty groups?
+            //any empty groupings?
+//        mtrace("Clear empty groups and groupings on course");
+        $group->clear_empty_groups_and_groupings_course($courseID);
+        $children = bcgt_get_child_courses($courseID);
+        if($children)
+        {
+//            mtrace("Clear empty groups and groupings on child courses");
+            foreach($children AS $child)
+            {
+                $group->clear_empty_groups_and_groupings_course($child->id);
+            }
+        }   
+        $metas = bcgt_get_meta_courses($courseID);  
+        if($metas)
+        {
+//            mtrace("Clear empty groups and groupings on meta courses");
+            foreach($metas AS $meta)
+            {
+                $group->clear_empty_groups_and_groupings_course($meta->id);
+            }
+        }
+    }
     
+//    mtrace("End Groups");
+    
+    // Check if we have this setting enabled
+//    mtrace("checking bcgt auto unenrol setting");
+    $setting = get_config('bcgt', 'autounenrolusers');
+    if ($setting != '1') return true;
+        
     $quals = $DB->get_records("block_bcgt_course_qual", array("courseid" => $courseID));
     if (!$quals) return true;
     
@@ -3602,6 +4675,7 @@ function event_handle_user_unenrolled($eventData){
         remove_qual_user($qualIDs, $role->id, $userID);
     }
     
+//    mtrace("END bcgt user un-enroled hook");
     return true;
     
 }
@@ -3822,7 +4896,7 @@ function bcgt_display_qual_grid_select($qualID, $courseID, $search)
         $out .= '<div>';
         $out .= '<h3>'.$qualification->get_display_name().'</h3>';
         $users = $qualification->get_users($role->id, $search);
-        $out .= '<table class="qualificationUsers">';
+        $out .= '<table class="qualificationUsers bcgt_table" align="center">';
         $out .= '<thead>';
         $out .= bcgt_get_users_column_headings();
         $out .= '<th>'.get_string('viewsimple', 'block_bcgt').'</th>';
@@ -3943,7 +5017,7 @@ function bcgt_display_student_grid_select($search, $userID = -1, $studentID = -1
     $users = $DB->get_records_sql($sql, $params);
     if($users)
     {
-        $out = '<table class="bcgtGridSelectTable">';
+        $out = '<table class="bcgtGridSelectTable bcgt_table" align="center">';
         $out .= '<thead><tr>';
         $out .= bcgt_get_users_column_headings();
         $out .= '<th>'.get_string('quals', 'block_bcgt').'</th>';
@@ -3995,6 +5069,100 @@ function bcgt_display_student_grid_select($search, $userID = -1, $studentID = -1
     else
     {
         $out .= '<p>'.get_string('noqualsuser', 'block_bcgt').'</p>';
+    }
+    return $out;
+}
+
+function bcgt_display_course_group_unit_grid_select($courseID = -1, $groupingID = -1, 
+        $originalCourseID = -1, $unitID = -1, $search = '')
+{
+    global $CFG, $DB, $COURSE;
+    $out = '';
+    
+    //get the students on the group
+    //get the quals these guys have access to
+    //get the distinct units
+    $sql = "SELECT distinct(unit.id), unit.*, family.family FROM {block_bcgt_unit} unit 
+        JOIN {block_bcgt_type} type ON type.id = unit.bcgttypeid 
+        JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = unit.id 
+        JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = qualunits.bcgtqualificationid"; 
+      
+    if($courseID != -1)
+    {
+        $sql .= ' JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = qualunits.bcgtqualificationid ';
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_user_unit} userunit ON userunit.bcgtunitid = qualunits.bcgtunitid AND 
+            unit.id = userunit.bcgtunitid";
+        $sql .= " JOIN {groups_members} members ON members.userid = userqual.userid 
+            AND members.userid = userunit.userid 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid ";
+    }
+    $sql .= " WHERE";
+    $params = array();
+    $and = false;
+    if($courseID != -1)
+    {
+        $sql .= ' coursequal.courseid = ?';
+        $params[] = $courseID;
+        $and = true;
+    }
+    if($groupingID != -1)
+    {
+        if($and)
+        {
+            $sql .= ' AND';
+        }
+        $sql .= ' gg.groupingid = ?';
+        $params[] = $groupingID;
+    }
+    if($search != '')
+    {
+        $sql .= " AND (unit.name LIKE ? OR unit.uniqueid LIKE ?";
+        $params[] = '%'.$search.'%';
+        $params[] = '%'.$search.'%';
+        $searchSplit = explode(' ', $search);
+        if($searchSplit)
+        {
+            foreach($searchSplit AS $split)
+            {
+                $sql .= ' OR unit.name LIKE ? OR unit.uniqueid LIKE ?';
+                $params[] = '%'.$split.'%';
+                $params[] = '%'.$split.'%';
+            }
+        }
+        $sql .= ')';
+    }
+    if($unitID != -1)
+    {
+        $sql .= ' AND unit.id = ?';
+        $params[] = $unitID;
+    }
+    $units = $DB->get_records_sql($sql, $params);
+    if($units)
+    {
+        $out = '<p>'.get_string('groupsunitsdesc', 'block_bcgt').'</p>';
+        $out .= '<table class="bcgt_table" align="center">';
+        $out .= '<tr>';
+        $out .= '<th>'.get_string('uniqueid', 'block_bcgt').'</th>';
+        $out .= '<th>'.get_string('name', 'block_bcgt').'</th>';
+        $out .= '<th colspan="2">'.get_string('grids', 'block_bcgt').'</th>';
+        $link = $CFG->wwwroot.'/blocks/bcgt/grids/unit_group_grid.php?g=s';
+        foreach($units AS $unit)
+        {
+            if(count(array_intersect(explode('|',BCGT_UNIT_VIEW_FAMILIES), array($unit->family))) > 0)
+            {
+                $out .= '<tr>';
+                $out .= '<td>'.$unit->uniqueid.'</td>';
+                $out .= '<td>'.$unit->name.'</td>';
+                $out .= '<td><a href="'.$link.'&uID='.$unit->id.'&grID='.$groupingID.'&g=s&cID='.$originalCourseID.'">'.get_string('viewsimple', 'block_bcgt').'</a></td>';
+                $out .= '<td><a href="'.$link.'&uID='.$unit->id.'&grID='.$groupingID.'&g=se&cID='.$originalCourseID.'">'.get_string('editsimple', 'block_bcgt').'</a></td>';
+                $out .= '</tr>';
+            }
+        }
+        $out .= '</table>';
     }
     return $out;
 }
@@ -4069,9 +5237,14 @@ function bcgt_display_unit_grid_select_search($search, $familesExcluded = array(
         $params[] = $unitID;
     }
     $units = $DB->get_records_sql($sql, $params);
+    $viewAll = false;
+    if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
+    {
+        $viewAll = true;
+    }
     if($units)
     {
-        $out = '<table>';
+        $out = '<table class="bcgt_table" align="center">';
         $out .= '<tr>';
         $out .= '<th>'.get_string('uniqueid', 'block_bcgt').'</th>';
         $out .= '<th>'.get_string('name', 'block_bcgt').'</th>';
@@ -4102,12 +5275,12 @@ function bcgt_display_unit_grid_select_search($search, $familesExcluded = array(
                 global $USER;
                 $userQualRole = Qualification::does_user_have_access($USER->id, $unit->bcgtqualificationid);
                 $out .= '<li class="gridSelectQualSelect">';
-                if($userQualRole)
+                if($viewAll || $userQualRole)
                 {
                     $out .= '<a href="'.$link.'&uID='.$unitID.'&qID='.$unit->bcgtqualificationid.'&cID='.$courseID.'">';
                 }
                 $out .= $qualification->get_display_name(false);
-                if($userQualRole)
+                if($viewAll || $userQualRole)
                 {
                     $out .= '</a>';
                 }
@@ -4130,8 +5303,9 @@ function bcgt_display_unit_grid_select($qualID, $courseID, $search)
     $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
     if($qualification)
     {
+        $out .= '<h3>'.$qualification->get_display_name().' '.get_string('units', 'block_bcgt').'</h3>';
         $units = $qualification->get_units();
-        $out .= '<table class="qualificationUsers">';
+        $out .= '<table class="qualificationUsers bcgt_table" align="center">';
         $out .= '<thead><tr><th>'.get_string('uniqueid', 'block_bcgt').'</th><th>'.get_string('name', 'block_bcgt').'</th>'.
                 '<th>'.get_string('viewsimple', 'block_bcgt').'</th><th>'.get_string('editsimple', 'block_bcgt').'</th></tr></thead><tbody>';
         if($units)
@@ -4142,8 +5316,8 @@ function bcgt_display_unit_grid_select($qualID, $courseID, $search)
                 $out .= '<tr>';
                 $out .= '<td>'.$unit->get_uniqueID().'</td>';
                 $out .= '<td>'.$unit->get_name().'</td>';
-                $out .= '<td><a href="'.$link.'uID='.$unit->get_id().'&qID='.$qualID.'&g=s&cID='.$courseID.'">'.get_string('viewsimple', 'block_bcgt').'</a></td>';
-                $out .= '<td><a href="'.$link.'uID='.$unit->get_id().'&qID='.$qualID.'&g=se&cID='.$courseID.'">'.get_string('editsimple', 'block_bcgt').'</a></td>';
+                $out .= '<td><a href="'.$link.'&uID='.$unit->get_id().'&qID='.$qualID.'&g=s&cID='.$courseID.'">'.get_string('viewsimple', 'block_bcgt').'</a></td>';
+                $out .= '<td><a href="'.$link.'&uID='.$unit->get_id().'&qID='.$qualID.'&g=se&cID='.$courseID.'">'.get_string('editsimple', 'block_bcgt').'</a></td>';
                 $out .= '</tr>';
             }
         }
@@ -4161,6 +5335,7 @@ function bcgt_display_class_grid_select_search($cID, $search, $qualExcludes, $us
     }
     $context = context_course::instance($cID);
     $out = '';
+    
     //get all of the students on this qual
     $quals = search_qualification(-1, -1, -1, $search, 
         -1, null, -1, false, false, 
@@ -4172,7 +5347,7 @@ function bcgt_display_class_grid_select_search($cID, $search, $qualExcludes, $us
         {	
             $canEdit = true;
         }
-        $out .= '<table class="qualificationClass">';
+        $out .= '<table class="qualificationClass bcgt_table" align="center">';
         $out .= class_qual_select_grid($quals, $cID, $canEdit);
         $out .= '</table>';
     }
@@ -4186,7 +5361,8 @@ function bcgt_display_assessment_grid_select_search($search, $userID = -1, $assI
     //and then a drop down of all of the quals this is on
     //or get the formal assessments that just we can see: through coursequal, context etc
     //and the quals drop down will be our quals. 
-    global $DB;
+    global $DB, $CFG;
+    $cID = optional_param('cID', -1, PARAM_INT);
     $sql = "SELECT distinct(project.id), project.* FROM {block_bcgt_project} project 
         JOIN {block_bcgt_activity_refs} refs ON refs.bcgtprojectid = project.id 
         JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = refs.bcgtqualificationid";
@@ -4242,37 +5418,433 @@ function bcgt_display_assessment_grid_select_search($search, $userID = -1, $assI
     $projects = $DB->get_records_sql($sql, $params);
     if($projects) 
     {
-        $retval .= '<table>';
-        $retval .= '<tr>';
-        $retval .= '<th>'.get_string('assessments', 'block_bcgt').'</th><th>'.get_string('quals', 'block_bcgt').'</th>';
-        $retval .= '</tr>';
+        $retval .= '<table class="bcgt_table" align="center">';
         foreach($projects AS $project)
         {
+            $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass_grid_class.php?cID='.$cID.'&g=a';
+            $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass.php?cID='.$cID;
             $retval .= '<tr>';
-            $retval .= '<td>'.$project->targetdate.' : '.$project->name.'</td>';
-            $retval .= '<td>';
-            $retval .= '<select name="projectQual" id="'.$project->id.'" class="projectQualSelect">';
-            $retval .= '<option value="-1">Please Select One</option>';
+            $retval .= '<th>'.$project->targetdate.' : '.$project->name.'</th>';
+            $retval .= '<th>'.get_string('view','block_bcgt').'</th>';
+            $retval .= '<th>'.get_string('edit','block_bcgt').'</th>';
+            $retval .= '</tr>';
             $projectObj = new Project($project->id, $project);
             $quals = $projectObj->get_editable_quals($userID);
             if($quals)
             {
                 foreach($quals AS $qual)
                 {
-                    $retval .= '<option value="'.$qual->id.'">'.bcgt_get_qualification_display_name($qual).'</option>';
+                    $retval .= '<tr>';
+                    $retval .= '<td>'.bcgt_get_qualification_display_name($qual).'</td>';
+                    $retval .= '<td><a href="'.$projectLink.'&pID='.$project->id.'&qID='.$qual->id.'">'.get_string('view','block_bcgt').'</td>';
+                    $retval .= '<td><a href="'.$projectLink.'&pID='.$project->id.'&qID='.$qual->id.'&edit=true">'.get_string('edit','block_bcgt').'</td>';
+                    $retval .= '</tr>';
                 }
             }
-            $retval .= '</select>';
-            $retval .= '</td>';
-            $retval .= '</tr>';
         }   
         $retval .= '</table>';
+    }
+    else
+    {
+        $retval .= '<p>'.get_string('nofaselection', 'block_bcgt').'</p>';
     }
     
     return $retval;
 }
 
-function bcgt_display_assessment_grid_select($courseID)
+function bcgt_display_activity_grid_select_search($search, $userID = -1, $actID = -1)
+{
+    $retval = '';
+    //so, lets either get all of the activities in the system
+    //or
+    global $DB, $CFG;
+    $cID = optional_param('cID', -1, PARAM_INT);
+    
+    //so go and get all of the activities that match this
+    $activities = bcgt_get_users_activities($userID, -1, -1, -1, $search, $actID);
+    if($activities) 
+    {
+        $modLinking = load_bcgt_mod_linking();
+        $modIcons = load_mod_icons(-1, -1, -1, -1);
+        $retval .= '<table class="bcgt_table" align="center">';
+        foreach($activities AS $activity)
+        {
+            //order by due date. 
+            $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
+            $activity->dueDate = $dueDate;
+            //the activity
+            //then the quals that are on this activity
+            $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID.'&g=se';
+            $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID;
+            $out = '<tr>';
+            $out .= '<th>';
+            if(array_key_exists($activity->module,$modIcons))
+            {
+                $icon = $modIcons[$activity->module];
+                //show the icon. 
+                $out .= html_writer::empty_tag('img', array('src' => $icon,
+                            'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+            }
+            $out .= '</th>';//one for the icon
+            $out .= '<th>'.$activity->name.'</th>';
+            $out .= '<th>';
+            if($dueDate)
+            {
+                $out .= date('d M Y : H:m', $dueDate); 
+            }
+            $out .= '</th>';
+//            $out .= '<th><a href="'.$qualLink.'&cmID='.$activity->id.'">'.get_string('viewall','block_bcgt').'</th>';
+//            $out .= '<th><a href="'.$qualLink.'&cmID='.$activity->id.'&g=se">'.get_string('editall','block_bcgt').'</th>';
+            $out .= '<th>'.get_string('viewall','block_bcgt').'</th>';
+            $out .= '<th>'.get_string('editall','block_bcgt').'</th>';
+            $out .= '</tr>';
+            $quals = get_bcgt_mod_quals($activity->id);
+            if($quals)
+            {
+                foreach($quals AS $qual)
+                {
+                    $qualification = Qualification::get_qualification_class_id($qual->id);
+                    $out .= '<tr>';
+                    $out .= '<td></td>';
+                    //one for name of activity, one for due date. 
+                    $out .= '<td colspan="2">'.$qualification->get_display_name().'</td>';
+                    $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'&qID='.$qual->id.'">'.get_string('view','block_bcgt').'</td>';
+                    $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'&qID='.$qual->id.'&g=se">'.get_string('edit','block_bcgt').'</td>';
+                    $out .= '</tr>';
+                }
+            }
+            $activity->out = $out;
+        }   
+        
+        require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+        $modSorter = new ModSorter();
+		usort($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+        foreach($activities AS $activity)
+        {
+            $retval .= $activity->out;
+        }
+        
+        $retval .= '</table>';
+    }
+    else
+    {
+        $retval .= '<p>'.get_string('noactselection', 'block_bcgt').'</p>';
+    }
+    
+    return $retval;
+}
+
+function bcgt_display_qual_activity($qualID, $search = '', $userID = -1, $actID = -1, $groupingID = -1)
+{
+    //selected a qual
+    //show the activities that are on this qual. 
+    global $CFG;
+    $cID = optional_param('cID', -1, PARAM_INT);
+    //get the qual
+    $qualification = Qualification::get_qualification_class_id($qualID);
+    if($qualification)
+    {
+        $modLinking = load_bcgt_mod_linking();
+        $modIcons = load_mod_icons(-1, -1, -1, -1);
+        $retval = '<table class="bcgt_table" align="center">';
+        $retval .= '<tr>';
+        //one for act icon
+        //one for act name
+        //one for act due date
+        //one for the coursename?
+        $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID.'&g=a&grID='.$groupingID;
+        $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID.'&grID='.$groupingID;
+        $retval .= '<th colspan="4">';
+        $retval .= $qualification->get_display_name();
+        $retval .= '</th>';
+        //now get activities 
+        $activities = bcgt_get_coursemodules(-1, $qualID, $groupingID, $search, $userID, $actID);
+        if($activities)
+        {
+            $retval .= '<th><a href="'.$qualLink.'&qID='.$qualID.'">'.get_string('viewall','block_bcgt').'</th>';
+            $retval .= '<th><a href="'.$qualLink.'&qID='.$qualID.'&g=se">'.get_string('editall','block_bcgt').'</th>';
+            $retval .= '</tr>';
+            //how many courses does this cover?
+            //do we need to show the courses?
+            $courseCount = count_courses_qual_activities(-1, $qualID, $groupingID, $search, $userID, $actID);
+            foreach($activities AS $activity)
+            {
+                //order by due date. 
+                $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
+                $activity->dueDate = $dueDate;
+                //the activity
+                //then the quals that are on this activity 
+                $out = '<tr>';
+                $out .= '<td>';
+                if(array_key_exists($activity->module,$modIcons))
+                {
+                    $icon = $modIcons[$activity->module];
+                    //show the icon. 
+                    $out .= html_writer::empty_tag('img', array('src' => $icon,
+                                'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                }
+                $out .= '</td>';//one for the icon
+                $out .= '<td>'.$activity->name.'</td>';
+                $out .= '<td>';
+                if($dueDate)
+                {
+                    $out .= date('d M Y : H:m', $dueDate); 
+                }
+                $out .= '</td>';
+                $out .= '<td>';
+                if($courseCount->count > 1)
+                {
+                    $out .= $activity->shortname;
+                }
+                $out .= '</td>';
+                $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'">'.get_string('view','block_bcgt').'</td>';
+                $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'&g=se">'.get_string('edit','block_bcgt').'</td>';
+                $out .= '</tr>';
+                $activity->out = $out;
+            }   
+
+            require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+            $modSorter = new ModSorter();
+            usort($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+            foreach($activities AS $activity)
+            {
+                $retval .= $activity->out;
+            } 
+        }
+        else
+        {
+            $retval .= '</tr>';
+        }
+        $retval .= '</table>';
+    }
+    
+    
+    //give it a header ability to view all by this qual
+    return $retval;
+    //load the activities on this qual. ability to view by activity. 
+}
+
+function bcgt_display_activity_grid_select($courseID, $groupingID = -1)
+{
+    //load the course
+    //option to view by all on course
+    
+    //load the activities
+    //option to view all quals by course
+    //then a link to filter by this activity.
+    
+    //selected a qual
+    //show the activities that are on this qual. 
+    global $CFG, $DB;
+    $cID = optional_param('cID', -1, PARAM_INT);
+    //get the qual
+    $courseDB = $DB->get_record_sql('SELECT * FROM {course} WHERE id = ?', array($courseID));
+    if($courseDB)
+    {
+        $courseQuals = bcgt_get_course_quals($cID);
+        $modLinking = load_bcgt_mod_linking();
+        $modIcons = load_mod_icons(-1, -1, -1, -1);
+        $retval = '<table class="bcgt_table" align="center">';
+        $retval .= '<tr>';
+        //one for act icon
+        //one for act name
+        //one for act due date
+        //one for the coursename?
+        $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID.'&g=a&grID='.$groupingID;
+        $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/act_grid.php?cID='.$cID.'&grID='.$groupingID;
+        $retval .= '<th colspan="3">';
+        $retval .= $courseDB->shortname;
+        $retval .= '</th>';
+        $canEdit = false;
+        if($courseQuals && count($courseQuals) == 1)
+        {
+            $canEdit = true;
+            $retval .= '<th><a href="'.$qualLink.'&cID='.$courseID.'">'.get_string('viewall','block_bcgt').'</th>';
+            $retval .= '<th><a href="'.$qualLink.'&cID='.$courseID.'&g=se">'.get_string('editall','block_bcgt').'</th>';
+        }
+        else
+        {
+            $retval .= '<th>Filter</th>';
+        }
+        $retval .= '</tr>';
+
+        //now get activities 
+        $activities = bcgt_get_coursemodules($courseID, -1, $groupingID, '', -1, -1);
+        if($activities)
+        {
+            //how many courses does this cover?
+            //do we need to show the courses?
+            $qualCount = count_qual_activities($courseID, -1, $groupingID, '', -1, -1);
+            foreach($activities AS $activity)
+            {
+                //order by due date. 
+                $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
+                $activity->dueDate = $dueDate;
+                //the activity
+                //then the quals that are on this activity 
+                $out = '<tr>';
+                $out .= '<td>';
+                if(array_key_exists($activity->module,$modIcons))
+                {
+                    $icon = $modIcons[$activity->module];
+                    //show the icon. 
+                    $out .= html_writer::empty_tag('img', array('src' => $icon,
+                                'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                }
+                $out .= '</td>';//one for the icon
+                $out .= '<td>'.$activity->name.'</td>';
+                $out .= '<td>';
+                if($dueDate)
+                {
+                    $out .= date('d M Y : H:m', $dueDate); 
+                }
+                $out .= '</td>';
+                //need to work on it so that it can be view / edit all for multiple quals
+//                $out .= '<td>';
+                $filterLink = '<a href="?g=a&cID='.$cID.'&course='.$courseID.'&activities='.$activity->id.'">'.get_string('filterbyqual', 'block_bcgt').'</a>';//link to further filter.
+//                $out .= '</td>';
+                if($canEdit)
+                {
+                    $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'">'.get_string('view','block_bcgt').'</td>';
+                    $out .= '<td><a href="'.$projectLink.'&cmID='.$activity->id.'&g=se">'.get_string('edit','block_bcgt').'</td>';
+                }
+                else
+                {
+                    $out .= '<td>'.$filterLink.'</td>';
+                }
+                $out .= '</tr>';
+                $activity->out = $out;
+            }   
+
+            require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+            $modSorter = new ModSorter();
+            usort($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+            foreach($activities AS $activity)
+            {
+                $retval .= $activity->out;
+            } 
+        }
+        $retval .= '</table>';
+    }
+    
+    
+    //give it a header ability to view all by this qual
+    return $retval;
+}
+
+
+function bcgt_display_qual_assessments($qualID, $search = '', $userID = -1, $assID = -1, $groupingID = -1)
+{
+    global $DB, $CFG;
+    $cID = optional_param('cID', -1, PARAM_INT);
+    $retval = '';
+    $sql = "SELECT distinct(project.id), project.* FROM {block_bcgt_project} project 
+        JOIN {block_bcgt_activity_refs} refs ON refs.bcgtprojectid = project.id 
+        JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = refs.bcgtqualificationid";
+    if($userID != -1)
+    {
+        $sql .= ' JOIN {context} context ON context.instanceid = coursequal.courseid 
+            JOIN {role_assignments} roleass ON roleass.contextid = context.id 
+            JOIN {role} role ON role.id = roleass.roleid';
+    }
+    if($groupingID != -1)
+    {
+        $sql .= ' JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = refs.bcgtqualificationid 
+            JOIN {groups_members} members ON members.userid = userqual.userid 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid';
+    }
+    $params = array();
+    if($search != '' || $userID != -1 || $assID != -1 || $groupingID != -1 || $qualID != -1)
+    {
+        $sql .= ' WHERE';
+        $and = false;
+        if($search != '')
+        {
+            $and = true;
+            $sql .= ' project.name LIKE ?';
+            $params[] = '%'.$search.'%';
+            $searchSplit = explode(' ', $search);
+            if($searchSplit)
+            {
+                foreach($searchSplit AS $split)
+                {
+                    $sql .= ' OR project.name LIKE ?';
+                    $params[] = '%'.$split.'%';
+                }
+            }
+        }
+        if($userID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $and = true;
+            $sql .= ' role.shortname = ? AND roleass.userid = ?';
+            $params[] = 'editingteacher';
+            $params[] = $userID;;
+        }
+        if($assID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $and = true;
+            $sql .= ' project.id = ?';
+            $params[] = $assID;
+        }
+        if($qualID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $and = true;
+            $sql .= ' refs.bcgtqualificationid = ?';
+            $params[] = $qualID;
+        }
+        if($groupingID != -1)
+        {
+            if($and)
+            {
+                $sql .= ' AND';
+            }
+            $and = true;
+            $sql .= ' gg.groupingid = ?';
+            $params[] = $groupingID;
+        }
+    }
+    $projects = $DB->get_records_sql($sql, $params);
+    if($projects)
+    {
+        $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass_grid_class.php?cID='.$cID.'&g=a';
+        $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass.php?cID='.$cID;
+        $qual = Qualification::get_qualification_class_id($qualID);
+        $retval .= '<table class="bcgt_table" align="center">';
+        $retval .= '<tr>';
+        $retval .= '<th>'.$qual->get_display_name().'</th>';
+        $retval .= '<th><a href="'.$qualLink.'&qID='.$qualID.'">'.get_string('viewall', 'block_bcgt').'</th>';
+        $retval .= '<th><a href="'.$qualLink.'&qID='.$qualID.'&edit=true">'.get_string('editall', 'block_bcgt').'</th>';
+        $retval .= '</tr>';
+        foreach($projects AS $project)
+        {
+            $retval .= '<tr>';
+            $retval .= '<td>'.$project->targetdate.' : '.$project->name.'</td>';
+            $retval .= '<td><a href="'.$projectLink.'&pID='.$project->id.'&qID='.$qualID.'">'.get_string('view','block_bcgt').'</td>';
+            $retval .= '<td><a href="'.$projectLink.'&pID='.$project->id.'&qID='.$qualID.'&edit=true">'.get_string('edit','block_bcgt').'</td>';
+            $retval .= '</tr>';
+        }   
+        $retval .= '</table>';
+    }
+    else
+    {
+        $retval .= '<p>'.get_string('nofaselection', 'block_bcgt').'</p>';
+    }
+    return $retval;
+}
+
+function bcgt_display_assessment_grid_select($courseID = -1, $groupingID = -1)
 {
     //this wants to display the quals that are on 
     //this course and then all of the assessments that can be chosen from
@@ -4285,22 +5857,32 @@ function bcgt_display_assessment_grid_select($courseID)
     $sql = "SELECT distinct(activityrefs.id), qual.id as bcgtqualificationid, project.id as projectid, project.name, project.targetdate FROM {block_bcgt_qualification} qual 
         JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = qual.id
         JOIN {block_bcgt_activity_refs} activityrefs ON activityrefs.bcgtqualificationid = qual.id
-        JOIN {block_bcgt_project} project ON project.id = activityrefs.bcgtprojectid 
-        WHERE coursequal.courseid = ? AND project.centrallymanaged = ? ORDER BY bcgtqualificationid ASC, project.name ASC
-        ";
-    $params = array($courseID, 1);
+        JOIN {block_bcgt_project} project ON project.id = activityrefs.bcgtprojectid";
+    if($groupingID != -1)
+    {
+        $sql .= " JOIN {groupings} g ON g.courseid = coursequal.courseid ";
+    }
+    $sql .= " WHERE project.centrallymanaged = ? ";
+    $params = array(1);
+    if($courseID != -1 )
+    {
+        $sql .= ' AND coursequal.courseid = ?';
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= ' AND g.id = ?';
+        $params[] = $groupingID;
+    }
+    $sql .= ' ORDER BY bcgtqualificationid ASC, project.name ASC';
     $projects = $DB->get_records_sql($sql, $params);
     if($projects)
     {
-        $retval .= '<table>';
-        $retval .= '<tr>';
-        $retval .= '<th>'.get_string('quals', 'block_bcgt').'</th>';
-        $retval .= '<th>'.get_string('assessments', 'block_bcgt').'</th>';
-        $retval .= '</tr>';
+        $retval .= '<table class="bcgt_table" align="center">';
         $lastQualID = -1;
         $retval .= '<tr>';
-        $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass_grid_class.php?cID='.$courseID.'&g=a';
-        $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass.php?cID='.$courseID;
+        $qualLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass_grid_class.php?cID='.$courseID.'&g=a&grID='.$groupingID;
+        $projectLink = $CFG->wwwroot.'/blocks/bcgt/grids/ass.php?cID='.$courseID.'&grID='.$groupingID;
         foreach($projects AS $project)
         {
             if($lastQualID != $project->bcgtqualificationid)
@@ -4310,32 +5892,41 @@ function bcgt_display_assessment_grid_select($courseID)
                 $retval .= '</tr>';
                 $retval .= '<tr>';
                 $qualification = Qualification::get_qualification_class_id($project->bcgtqualificationid);
-                $retval .= '<td><a href="'.$qualLink.'&qID='.$lastQualID.'">'.$qualification->get_display_name().'</a></td>';
-                $retval .= '<td><a href="'.$projectLink.'&pID='.$project->projectid.'&qID='.$lastQualID.'">'.$project->name.'</a></td>';
+                $retval .= '<th>'.$qualification->get_display_name().'</a></th>';
+                $retval .= '<th><a href="'.$qualLink.'&qID='.$lastQualID.'">'.get_string('viewall', 'block_bcgt').'</th>';
+                $retval .= '<th><a href="'.$qualLink.'&qID='.$lastQualID.'&edit=true">'.get_string('editall', 'block_bcgt').'</th>';
+                $retval .= '</tr>';
             }
-            else {
-                $retval .= '<td><a href="'.$projectLink.'&pID='.$project->projectid.'&qID='.$lastQualID.'">'.$project->name.'</a></td>';
-            }
+            $retval .= '<tr>';
+            $retval .= '<td>'.$project->name.'</a></td>';
+            $retval .= '<td><a href="'.$projectLink.'&pID='.$project->projectid.'&qID='.$lastQualID.'">'.get_String('view','block_bcgt').'</td>';
+            $retval .= '<td><a href="'.$projectLink.'&pID='.$project->projectid.'&qID='.$lastQualID.'&edit=true">'.get_String('edit','block_bcgt').'</td>';
+            $retval .= '</tr>';
             
         }
         $retval .= '</tr>';
         $retval .= '</table>';
     }
+    else
+    {
+        $retval .= '<p>'.get_string('nofaselection', 'block_bcgt').'</p>';
+    }
     return $retval;
     
 }
 
-function bcgt_display_class_grid_select($courseID, $cID, $qualExcludes, $search)
+function bcgt_display_class_grid_select($courseID = -1, $groupingID = -1, $cID = -1, 
+        $qualExcludes = array(), $search = '')
 {
     global $COURSE;
-    if($courseID == -1)
+    if($cID == -1)
     {
-        $courseID = $COURSE->id;
+        $cID = $COURSE->id;
     }
-    $context = context_course::instance($courseID);
+    $context = context_course::instance($cID);
     $out = '';
     //get all of the students on this qual
-    $quals = bcgt_get_course_quals($courseID, -1, -1, $qualExcludes, $search);
+    $quals = bcgt_get_course_quals($courseID, -1, -1, $qualExcludes, $search, $groupingID);
     if($quals)
     {
         $canEdit = false;
@@ -4343,18 +5934,19 @@ function bcgt_display_class_grid_select($courseID, $cID, $qualExcludes, $search)
         {	
             $canEdit = true;
         }
-        $out .= '<table class="qualificationClass">';
-        $out .= class_qual_select_grid($quals, $cID, $canEdit);
+        $out .= '<p>'.get_string('classgridnoaccess', 'block_bcgt').'</p>';
+        $out .= '<table class="qualificationClass bcgt_table" align="center">';
+        $out .= class_qual_select_grid($quals, $cID, $canEdit, $courseID, $groupingID);
         $out .= '</table>';
     }
     return $out;
 }
 
-function class_qual_select_grid($quals, $cID, $canEdit)
+function class_qual_select_grid($quals, $cID, $canEdit, $courseID = -1, $groupingID = -1)
 {
     $out = '';
-    global $CFG;
-    $link = $CFG->wwwroot.'/blocks/bcgt/grids/class_grid.php?cID='.$cID;
+    global $CFG, $USER;
+    $link = $CFG->wwwroot.'/blocks/bcgt/grids/class_grid.php?cID='.$cID.'&grID='.$groupingID.'&scID='.$courseID;
     $out .= '<tr>';
     $out .= '<th>'.get_string('family', 'block_bcgt').'</th>';
     $out .= '<th>'.get_string('level', 'block_bcgt').'</th>';
@@ -4368,17 +5960,36 @@ function class_qual_select_grid($quals, $cID, $canEdit)
     $out .= '</tr>';
     foreach($quals AS $qual)
     {
+        //is the user actually on this qual?
         $qualID = $qual->id;
         $loadParams = new stdClass();
-        $loadParams->loadLevel = Qualification::LOADLEVELUNITS;
+        $loadParams->loadLevel = Qualification::LOADLEVELMIN;
         $qualification = Qualification::get_qualification_class_id($qual->id, $loadParams);
         if($qualification)
         { 
+            $hasAccess = true;
+            if(!has_capability('block/bcgt:viewallgrids', context_system::instance()))
+            {
+                $hasAccess = Qualification::does_user_have_access($USER->id, $qual->id); 
+            }
             $out .= '<tr>'.$qualification->get_display_name(false, ' ', array(), 'Table').'';
-            $out .= '<td><a href="'.$link.'&qID='.$qualID.'">'.get_string('view', 'block_bcgt').'</a></td>';
+            $out .= '<td>';
+            $class = '';
+            if(!$hasAccess)
+            {
+                $class = 'bcgtnoaccess';
+            }
+            $out .= '<a class="'.$class.'" href="'.$link.'&qID='.$qualID.'">';
+            $out .= get_string('view', 'block_bcgt');
+               $out .= '</a>'; 
+            $out .= '</td>';
             if($canEdit)
             {
-                $out .= '<td><a href="'.$link.'&qID='.$qualID.'">'.get_string('edit', 'block_bcgt').'</a></td>';
+                $out .= '<td>';
+                $out .= '<a class="'.$class.'" href="'.$link.'&qID='.$qualID.'&g=se">';
+                $out .= get_string('edit', 'block_bcgt');
+                $out .= '</a>';
+                $out .= '</td>';
             }
             $out .= '</tr>';
         }
@@ -4797,4 +6408,755 @@ function bcgt_convert_custom_url($url, $params){
     
     return $url;
     
+}
+
+/**
+ * This gets all of the meta courses for a course
+ * @param type $courseID
+ */
+function bcgt_get_meta_courses($courseID)
+{
+    global $DB;
+    $sql = "SELECT course.* FROM {course} course JOIN {enrol} enrol ON enrol.courseid = course.id 
+        WHERE enrol = ? AND customint1 = ? ";
+    $params = array();
+    $params[] = 'meta';
+    $params[] = $courseID;
+    return $DB->get_records_sql($sql, $params);
+}
+
+/**
+ * This gets all of the child courses for a course
+ * @global type $DB
+ * @param type $courseID
+ * @return type
+ */
+function bcgt_get_child_courses($courseID)
+{
+    global $DB;
+    $sql = "SELECT course.* FROM {course} course JOIN {enrol} enrol ON enrol.customint1 = course.id 
+        WHERE enrol = ? AND courseid = ? ";
+    $params = array();
+    $params[] = 'meta';
+    $params[] = $courseID;
+    return $DB->get_records_sql($sql, $params);
+}
+
+
+
+/**
+ * Deletes all groups and groupings
+ * Firts finds all of the groups and groupings by the groupName
+ * gets rid of the dependancies (users and groups)
+ * then deletes them.
+ * @param type $courseID
+ * @param type $groupName
+ */
+function bcgt_remove_groups_and_groupings($courseID, $groupName)
+{
+    //get the group(s)
+    //remove all users from group
+    //delete group
+    $group = new Group();
+    $groups = $group->get_all_groups_by_name($courseID, $groupName);
+    if($groups)
+    {
+        foreach($groups AS $group)
+        {
+            
+            $actualGroup = new Group($group->id, $group);
+            $actualGroup->delete_group();
+        }
+    }
+    
+    //get the grouping(s)
+    //remove all groups from grouping
+    //delete grouping
+    
+    $grouping = new Grouping();
+    $groupingss = $grouping->get_all_groupings_by_name($courseID, $groupName);
+    if($groupingss)
+    {
+        foreach($groupingss AS $grouping)
+        {
+            
+            $actualGrouping = new Grouping($grouping->id, $grouping);
+            $actualGrouping->delete_grouping();
+        }
+    }
+}
+
+/**
+ * Checks to see if a role assignment exists for the course in Moodle.
+ * @global type $DB
+ * @param type $userID
+ * @param type $courseID
+ * @return boolean
+ */
+function bcgt_is_user_on_course_user($userID, $courseID)
+{
+    global $DB;
+    $sql = "SELECT distinct(user.id), user.* FROM {user} user
+        JOIN {role_assignments} roleass ON roleass.userid = user.id 
+        JOIN {context} context ON context.id = roleass.contextid 
+        JOIN {course} course ON course.id = context.instanceid 
+        WHERE course.id = ? AND user.id = ?";
+    $params = array();
+    $params[] = $courseID;
+    $params[] = $userID;
+    $records = $DB->get_records_sql($sql, $params);
+    if($records)
+    {
+        return true;
+    }
+    return false;
+}
+
+function get_mod_linking($id = -1)
+{
+    global $DB;
+    $sql = "SELECT link.*, modules.name as modname FROM {block_bcgt_mod_linking} link 
+        JOIN {modules} modules ON modules.id = link.moduleid";
+    $params = array();
+    if($id != -1)
+    {
+        $sql .= " WHERE link.id = ?";
+        $params[] = $id;
+        return $DB->get_record_sql($sql, $params);
+    }
+    return $DB->get_records_sql($sql, $params);
+}
+
+function get_non_used_mods()
+{
+    global $DB;
+    $sql = "SELECT * FROM {modules} WHERE id NOT IN (SELECT moduleid FROM {block_bcgt_mod_linking}) AND visible = 1 ORDER BY name ASC";
+    return $DB->get_records_sql($sql, array());
+}
+
+function bcgt_get_mod_details($criteriaID = -1, $modType = '', $qualID = -1, $courseID = -1, $groupingID = -1)
+{
+    //i want the coursemoduleid, the module, the instance name, the courseid, groupingid
+    global $DB;
+    $sql = "SELECT distinct(cmods.id), items.courseid as courseid, items.itemname as name, 
+        items.itemtype as type, items.itemmodule as module, items.iteminstance, 
+        cmods.module AS cmodule, cmods.section, cmods.groupingid, cmods.instance AS instanceid 
+        FROM {grade_items} items 
+        JOIN {modules} mods ON mods.name = items.itemmodule
+        JOIN {course_modules} cmods ON cmods.module = mods.id AND cmods.instance = items.iteminstance";
+    $params = array();
+    if($courseID != -1)
+    {
+        $sql .= " AND cmods.course = ? ";
+        $params[] = $courseID;
+    }  
+    if($qualID != -1)
+    {
+        $sql .= " JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id";
+    }    
+    $sql .= " WHERE items.itemtype=? AND mods.visible = ? AND cmods.visible = ?";
+    $params[] = 'mod';
+    $params[] = 1;
+    $params[] = 1;
+    if($criteriaID != -1)
+    {
+        $sql .= " AND refs.bcgtcriteriaid = ?";
+        $params[] = $criteriaID;
+    }
+    if($modType != '')
+    {
+        $sql .= ' AND itemmodule = ?';
+        $params[] = $modType;
+    }
+    if($courseID != -1)
+    {
+        $sql .=  ' AND items.courseid = ? AND cmods.course = ?';
+        $params[] = $courseID;
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND cmods.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($qualID != -1)
+    {
+        $sql .= " AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+    }
+    return $DB->get_records_sql($sql, $params);
+}
+
+function get_bcgt_mod_due_date($cmID, $instanceID = -1, $modID = -1, $bcgtModLinking = null)
+{
+    global $DB;
+    if($modID == -1 || $instanceID == -1)
+    {
+        $sql = "SELECT * FROM {course_modules} modules WHERE id = ?";
+        $cmRecord = $DB->get_record($sql, array($cmID));
+        if(!$cmRecord)
+        {
+            return false;
+        }
+        $modID = $cmRecord->module;
+        $instanceID = $cmRecord->instance;
+    }
+    if(!$bcgtModLinking)
+    {
+        $bcgtModLinking = load_bcgt_mod_linking();
+    }
+    if(!isset($bcgtModLinking[$modID]))
+    {
+        return false;
+    }
+    $modLink = $bcgtModLinking[$modID];
+    
+    $sql = "SELECT ".$modLink->modtableduedatefname." FROM {".$modLink->modtablename."} WHERE id = ?";
+    $modRecord = $DB->get_record_sql($sql, array($instanceID));
+    $dueDate = $modRecord->{$modLink->modtableduedatefname};
+    
+    return $dueDate;
+}
+
+function bcgt_get_user_activity_units($userID, $qualID, $cmID)
+{
+    global $DB;
+    $sql = "SELECT * FROM {block_bcgt_unit} unit 
+        JOIN {block_bcgt_user_unit} userunit ON userunit.bcgtunitid = unit.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.bcgtunitid = unit.id 
+        WHERE refs.bcgtqualificationid = ? AND userunit.userid = ? AND refs.coursemoduleid = ?";
+    return $DB->get_record_sql($sql, array($qualID, $userID, $cmID));
+}
+
+function get_bcgt_mod_quals($cmID)
+{
+    global $DB;
+    $sql = "SELECT distinct(qual.id), qual.* FROM {block_bcgt_qualification} qual 
+        JOIN {block_bcgt_activity_refs} refs ON refs.bcgtqualificationid = qual.id 
+        WHERE refs.coursemoduleid = ?";
+    $params = array();
+    $params[] = $cmID;
+    return $DB->get_records_sql($sql, $params);
+}
+
+function load_bcgt_mod_linking()
+{
+    global $DB;
+    $sql = "SELECT moduleid, modtablename, modtablecoursefname, modtableduedatefname, 
+        modsubmissiontable, submissionuserfname, submissiondatefname, submissionmodidfname, 
+        checkforautotracking 
+        FROM {block_bcgt_mod_linking}";
+    return $DB->get_records_sql($sql, array());
+}
+
+function get_mod_unit_summary_table($cmID)
+    {
+    global $CFG;
+        $retval = '';
+        $activityUnits = get_activity_units($cmID);
+        if($activityUnits)
+        {
+            $retval .= '<table class="activityLinksAssignmentGroup modlinkingsummary">';
+            foreach($activityUnits AS $activityUnit)
+            {
+                $retval .= '<tr>';
+                $retval .= '<td>';
+                $activityCriterias = get_activity_units_criteria($cmID, $activityUnit->id);
+                require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/CriteriaSorter.class.php');
+                $critSorter = new CriteriaSorter();
+                usort($activityCriterias, array($critSorter, "ComparisonDelegateByDBtName"));
+                $retval .= '<table class="activityLinksActivities">';
+                $retval .= '<tr><th colspan="'.count($activityCriterias).'">'.$activityUnit->name.'</th></tr>';
+                $retval .= '<tr>';
+                foreach($activityCriterias AS $activityCriteria)
+                {
+                    $retval .= '<td>'.$activityCriteria->name.'</td>';
+                }
+                $retval .= '</tr>';
+                $retval .= '</table>';
+                $retval .= '</td>';
+                $retval .= '</tr>';
+            }
+            $retval .= '</table>';
+        }
+        return $retval;
+    }
+    
+    function bcgt_get_criteria_submission_attempted($criteriaID, $courseID = -1, $qualID = -1, 
+                                    $groupingID = -1)
+{
+    $courseJoinSql = " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = 
+            qualunits.bcgtqualificationid 
+            JOIN {context} con ON con.instanceid = coursequal.courseid 
+            JOIN {role_assignments} roleass ON roleass.contextid = con.id 
+            JOIN {user} user ON user.id = roleass.userid AND user.id = userunit.userid";
+    
+    $groupingJoinSql = " JOIN {groups_members} members ON members.userid = user.id 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    
+    $courseWhere = " coursequal.courseid = ?";
+    $qualWhere = " qualunits.bcgtqualificationid = ?";
+    $groupingWhere = " gg.groupingid = ?";
+    
+    global $DB;
+    $params = array();
+    $attemptedSql = "SELECT count(distinct(usercrit.userid)) as count 
+        FROM {block_bcgt_user_criteria} 
+        usercrit JOIN {block_bcgt_criteria} crit ON crit.id = usercrit.bcgtcriteriaid
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = crit.bcgtunitid 
+        JOIN {block_bcgt_user_unit} userunit ON userunit.userid = usercrit.userid AND qualunits.bcgtunitid = userunit.bcgtunitid";
+    if($courseID != -1)
+    {
+        $attemptedSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $attemptedSql .= $groupingJoinSql;
+    }
+    $attemptedSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $attemptedSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $attemptedSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $attemptedSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    } 
+    $attemptedSql .= " AND value.shortvalue != ? AND value.shortvalue != ? 
+            AND value.shortvalue != ? AND usercrit.bcgtvalueid IS NOT NULL";
+    $params[] = 'WNS';
+    $params[] = 'ABS';
+    $params[] = 'N/A';
+    return $DB->get_record_sql($attemptedSql, $params);
+}
+
+function bcgt_get_criteria_submission_achieved($criteriaID, $courseID = -1, $qualID = -1, 
+                                    $groupingID = -1)
+{
+    $courseJoinSql = " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = 
+            qualunits.bcgtqualificationid 
+            JOIN {context} con ON con.instanceid = coursequal.courseid 
+            JOIN {role_assignments} roleass ON roleass.contextid = con.id 
+            JOIN {user} user ON user.id = roleass.userid AND user.id = userunit.userid";
+    
+    $groupingJoinSql = " JOIN {groups_members} members ON members.userid = user.id 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    
+    $courseWhere = " coursequal.courseid = ?";
+    $qualWhere = " qualunits.bcgtqualificationid = ?";
+    $groupingWhere = " gg.groupingid = ?";
+    
+    global $DB;
+    $params = array(); 
+    
+    $achievedSql = "SELECT count(distinct(usercrit.userid)) as count 
+        FROM {block_bcgt_user_criteria} 
+        usercrit JOIN {block_bcgt_criteria} crit ON crit.id = usercrit.bcgtcriteriaid
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = crit.bcgtunitid
+        JOIN {block_bcgt_user_unit} userunit ON userunit.userid = usercrit.userid AND qualunits.bcgtunitid = userunit.bcgtunitid";
+    if($courseID != -1)
+    {
+        $achievedSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $achievedSql .= $groupingJoinSql;
+    }
+    $achievedSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $achievedSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $achievedSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $achievedSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    } 
+    $achievedSql .= " AND value.shortvalue = ?";
+    $params[] = 'A';
+    return $DB->get_record_sql($achievedSql, $params);
+}
+
+function bcgt_get_users_on_coursemodules($qualID = -1,$courseID = -1, $groupingID = -1, $actID = -1)
+{
+    global $DB;
+    $sql = "SELECT distinct(user.id), user.* FROM {user} user 
+        JOIN {block_bcgt_user_qual} userqual ON userqual.userid = user.id 
+        JOIN {role_assignments} ra ON ra.userid = user.id 
+        JOIN {role} role ON role.id = ra.roleid
+        JOIN {context} con ON con.id = ra.contextid 
+        JOIN {course} course ON course.id = con.instanceid 
+        JOIN {course_modules} cmods ON cmods.course = course.id 
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = refs.bcgtqualificationid 
+        AND coursequal.courseid = cmods.course";
+    if($groupingID != -1)
+    {
+        $sql .= " JOIN {groups_members} members ON members.userid = user.id 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    }
+    $sql .= " WHERE cmods.groupingid = ? AND role.shortname = ?";
+    $params = array(0, 'student');
+    if($qualID != -1)
+    {
+        $sql .= " AND userqual.bcgtqualificationid = ? AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+        $params[] = $qualID;
+    }
+    if($courseID != -1)
+    {
+        $sql .= " AND cmods.course = ?";
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql .= " AND gg.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($actID != -1)
+    {
+        $sql .= " AND cmods.id = ?";
+        $params[] = $actID;
+    }
+
+    $sqlUnion = " UNION ";
+    $sql2 = " SELECT distinct(user.id), user.* FROM {user} user 
+        JOIN {block_bcgt_user_qual} userqual ON userqual.userid = user.id 
+        JOIN {role_assignments} ra ON ra.userid = user.id 
+        JOIN {context} con ON con.id = ra.contextid 
+        JOIN {course} course ON course.id = con.instanceid 
+        JOIN {course_modules} cmods ON cmods.course = course.id
+        JOIN {block_bcgt_activity_refs} refs ON refs.coursemoduleid = cmods.id
+        JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = refs.bcgtqualificationid 
+        AND coursequal.courseid = cmods.course
+        JOIN {groupings_groups} gg ON gg.groupingid = cmods.groupingid 
+        JOIN {groups_members} members ON members.groupid = gg.groupid AND members.userid = user.id 
+        WHERE cmods.groupingid != ? ";
+    $params[] = 0;
+    if($qualID != -1)
+    {
+        $sql2 .= " AND userqual.bcgtqualificationid = ? AND refs.bcgtqualificationid = ?";
+        $params[] = $qualID;
+        $params[] = $qualID;
+    }
+    if($courseID != -1)
+    {
+        $sql2 .= " AND cmods.course = ?";
+        $params[] = $courseID;
+    }
+    if($groupingID != -1)
+    {
+        $sql2 .= " AND gg.groupingid = ?";
+        $params[] = $groupingID;
+    }
+    if($actID != -1)
+    {
+        $sql2 .= " AND cmods.id = ?";
+        $params[] = $actID;
+    }
+    $finalSQL = $sql.$sqlUnion.$sql2;
+    $finalSQL .= ' ORDER BY lastname ASC, firstname ASC, username ASC';
+    return $DB->get_records_sql($finalSQL, $params);
+}
+
+function bcgt_get_criteria_submission_students($criteriaID, $courseID = -1, $qualID = -1, 
+                                    $groupingID = -1)
+{
+    $courseJoinSql = " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = 
+            qualunits.bcgtqualificationid 
+            JOIN {context} con ON con.instanceid = coursequal.courseid 
+            JOIN {role_assignments} roleass ON roleass.contextid = con.id 
+            JOIN {user} user ON user.id = roleass.userid AND user.id = userunit.userid";
+    
+    $groupingJoinSql = " JOIN {groups_members} members ON members.userid = user.id 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    
+    $courseWhere = " coursequal.courseid = ?";
+    $qualWhere = " qualunits.bcgtqualificationid = ?";
+    $groupingWhere = " gg.groupingid = ?";
+    
+    global $DB;
+    $params = array(); 
+    $totalSql = "SELECT count(distinct(userunit.userid)) as count FROM {block_bcgt_user_unit} userunit 
+        JOIN {block_bcgt_criteria} crit ON crit.bcgtunitid = userunit.bcgtunitid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = userunit.bcgtunitid 
+        LEFT OUTER JOIN {block_bcgt_user_criteria} usercrit ON usercrit.bcgtcriteriaid = crit.id 
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid ";
+    if($courseID != -1)
+    {
+        $totalSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $totalSql .= $groupingJoinSql;
+    }
+    $totalSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $totalSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $totalSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $totalSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    }
+    return $DB->get_record_sql($totalSql, $params);
+}
+
+function user_view_activity_grids($courseID)
+{
+    //are they on the front page?
+    
+    //are they on their course
+    
+    //does the user have the capibility
+    
+    //does the user have any qualifications that are BTECs?
+    
+    //are we allowing activities to be linked to the grade tracker?
+    
+    //
+}
+
+function load_mod_icons($courseID = -1, $qualID = -1, $groupingID = -1, $criteriaID = -1, $unitID = -1)
+{
+    global $OUTPUT;
+    $modIconArray = array();
+    //get all of the icons that are on the selection
+    $activities = bcgt_get_coursemodules_types_in_course($courseID, $qualID, $groupingID, $criteriaID, $unitID);
+    if($activities)
+    {
+        foreach($activities AS $activity)
+        {
+            $modIconArray[$activity->name] = $OUTPUT->pix_url('icon', $activity->name);
+        }
+    }
+    return $modIconArray;
+}
+
+/**
+ * Gets the distinct family of the qualifications a user can see
+ * @global type $DB
+ * @global type $USER
+ * @param type $courseID
+ * @param type $seeAll
+ * @return type
+ */
+function bcgt_get_users_qual_families($courseID = -1, $seeAll = false, $returnArray = true)
+{
+    global $DB, $USER;
+    $sql = "SELECT distinct(family.id), family.* FROM {block_bcgt_type_family} family 
+        JOIN {block_bcgt_type} type ON type.bcgttypefamilyid = family.id 
+        JOIN {block_bcgt_target_qual} targetqual ON targetqual.bcgttypeid = type.id
+        JOIN {block_bcgt_qualification} qual ON qual.bcgttargetqualid = targetqual.id ";
+    $params = array();
+    if($courseID != -1 && $courseID != 1)
+    {
+        //then we can search by courseid
+        $sql .= " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = qual.id";
+    }
+    if(!$seeAll)
+    {
+        $sql .= " JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = qual.id ";
+    }
+    if(($courseID != -1 && $courseID != 1) || (!$seeAll))
+    {
+        $sql .= " WHERE";
+        $and = false;
+        if(($courseID != -1 && $courseID != 1))
+        {
+            $sql .= " coursequal.courseid = ?";
+            $params[] = $courseID;
+            $and = true;
+        }
+        if(!$seeAll)
+        {
+            if($and)
+            {
+                $sql .= " AND";
+            }
+            $sql .= " userqual.userid = ?";
+            $params[] = $USER->id;
+            $and = true;
+        }
+    }
+    $records = $DB->get_records_sql($sql, $params);
+    if($records)
+    {
+        if($returnArray)
+        {
+            $retval = array();
+            foreach($records AS $family)
+            {
+                $retval[] = $family->family;
+            }
+            return $retval;
+        }
+        return $records;
+    }
+    return null; 
+    
+}
+
+function bcgt_get_assessment_planner($userID = -1, $qualID = -1, $courseID = -1, $groupingID = -1)
+{
+    //list of activities
+    //for each % achieved,
+    //or grade from gradebook
+    //link to course
+    //criteria on (as in no)
+    //criteria achieved (as in no)
+    //feedback from grid
+    //feedback from gradebook
+    
+    //colour coded to denote behind
+    //date submitted
+}
+
+function bcgt_get_assessment_calendar($userID = -1, $qualID = -1, $courseID = -1, $groupingID = -1, $view = '')
+{
+    //by year
+    //by month
+    //by unit
+    
+    //display hidden activities?
+    
+    //display other calendars from rest of the system. 
+}
+
+function bcgt_output_simple_grid_table($data)
+{
+    $out = '<table>';
+    foreach($data AS $rows)
+    {
+        $out .= '<tr>';
+        foreach($rows AS $cell)
+        {
+            $out .= '<td>'.$cell.'</td>';
+        }
+        $out .= '</tr>';
+    }
+    
+    $out .= '<table>';
+    return  $out;
+}
+
+function bcgt_add_mentee($tutorID, $studentID){
+            
+    global $DB;
+
+    // First thing we need is a context for the type CONTEXT_USER with the given studentID, so that we can assign a role with it
+    $student = $DB->get_record("user", array("id" => $studentID));
+    if (!$student){
+        return false;
+    }
+
+    $context = \context_user::instance($student->id);
+
+    if (!$context){
+        return false;
+    }
+    
+    $tutorRoleShortname = get_config('bcgt', 'tutorrole');
+    $role = $DB->get_record("role", array("shortname" => $tutorRoleShortname));
+
+    if (!$tutorRoleShortname || !$role) return false;
+
+    if ( role_assign($role->id, $tutorID, $context) ){
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+            
+}
+
+function bcgt_remove_mentee($tutorID, $studentID){
+    
+     global $DB;
+
+    // First thing we need is a context for the type CONTEXT_USER with the given studentID, so that we can assign a role with it
+    $student = $DB->get_record("user", array("id" => $studentID));
+    if (!$student){
+        return false;
+    }
+
+    $context = \context_user::instance($student->id);
+
+    if (!$context){
+        return false;
+    }
+    
+    $tutorRoleShortname = get_config('bcgt', 'tutorrole');
+    $role = $DB->get_record("role", array("shortname" => $tutorRoleShortname));
+
+    if (!$tutorRoleShortname || !$role) return false;
+
+    if ( role_unassign($role->id, $tutorID, $context->id) ){
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+function bcgt_get_students_on_course($courseID){
+    
+    global $DB;
+    
+    $records = $DB->get_records_sql("SELECT DISTINCT u.*
+                                     FROM {user} u
+                                     INNER JOIN {role_assignments} r ON r.userid = u.id
+                                     INNER JOIN {context} x ON x.id = r.contextid
+                                     WHERE x.instanceid = ? AND r.roleid = 5
+                                     ORDER BY u.lastname, u.firstname", array($courseID));
+    
+    return $records;
+    
+}
+
+
+function bcgt_get_students_on_tutor($tutorID){
+    
+    global $DB;
+    
+    $tutorRoleShortname = get_config('bcgt', 'tutorrole');
+    $role = $DB->get_record("role", array("shortname" => $tutorRoleShortname));
+
+    if (!$tutorRoleShortname || !$role) return false;
+    
+    $records = $DB->get_records_sql("SELECT DISTINCT u.*
+                                     FROM {role_assignments} r 
+                                     INNER JOIN {context} x ON x.id = r.contextid
+                                     INNER JOIN {user} u ON u.id = x.instanceid
+                                     WHERE r.userid = ? AND r.roleid = ? AND x.contextlevel = ?
+                                     ORDER BY u.lastname, u.firstname", array($tutorID, $role->id, CONTEXT_USER));
+    
+    return $records;
 }

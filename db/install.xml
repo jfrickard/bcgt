@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="blocks/bcgt/db" VERSION="20140106" COMMENT="XMLDB file for Moodle blocks/bcgt"
+<XMLDB PATH="blocks/bcgt/db" VERSION="20140214" COMMENT="XMLDB file for Moodle blocks/bcgt"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -870,7 +870,7 @@
         <FIELD NAME="id" TYPE="int" LENGTH="18" NOTNULL="true" SEQUENCE="true" NEXT="bcgttargetqualid"/>
         <FIELD NAME="bcgttargetqualid" TYPE="int" LENGTH="18" NOTNULL="true" SEQUENCE="false" PREVIOUS="id" NEXT="grade"/>
         <FIELD NAME="grade" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false" PREVIOUS="bcgttargetqualid" NEXT="ucaspoints"/>
-        <FIELD NAME="ucaspoints" TYPE="number" LENGTH="5" NOTNULL="true" SEQUENCE="false" DECIMALS="2" PREVIOUS="grade" NEXT="archived"/>
+        <FIELD NAME="ucaspoints" TYPE="number" LENGTH="5" NOTNULL="false" SEQUENCE="false" DECIMALS="2" PREVIOUS="grade" NEXT="archived"/>
         <FIELD NAME="archived" TYPE="text" NOTNULL="false" SEQUENCE="false" PREVIOUS="ucaspoints" NEXT="upperscore"/>
         <FIELD NAME="upperscore" TYPE="number" LENGTH="3" NOTNULL="false" SEQUENCE="false" DECIMALS="1" PREVIOUS="archived" NEXT="lowerscore"/>
         <FIELD NAME="lowerscore" TYPE="number" LENGTH="3" NOTNULL="false" SEQUENCE="false" DECIMALS="1" PREVIOUS="upperscore" NEXT="umspercentagelower"/>
@@ -1752,11 +1752,48 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
     </TABLE>
-    <TABLE NAME="block_bcgt_settings" COMMENT="Default comment for the table, please edit me" PREVIOUS="block_bcgt_stud_course_grade">
+    <TABLE NAME="block_bcgt_settings" COMMENT="Default comment for the table, please edit me" PREVIOUS="block_bcgt_stud_course_grade" NEXT="block_bcgt_user_grouping">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" NEXT="setting"/>
         <FIELD NAME="setting" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" PREVIOUS="id" NEXT="value"/>
         <FIELD NAME="value" TYPE="text" NOTNULL="false" SEQUENCE="false" PREVIOUS="setting"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+    </TABLE>
+    <TABLE NAME="block_bcgt_user_grouping" COMMENT="Default comment for the table, please edit me" PREVIOUS="block_bcgt_settings" NEXT="block_bcgt_mod_linking">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" NEXT="userid"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="18" NOTNULL="false" SEQUENCE="false" PREVIOUS="id" NEXT="courseid"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="18" NOTNULL="false" SEQUENCE="false" PREVIOUS="userid" NEXT="groupingid"/>
+        <FIELD NAME="groupingid" TYPE="int" LENGTH="18" NOTNULL="false" SEQUENCE="false" PREVIOUS="courseid"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid-ind" UNIQUE="false" FIELDS="userid" NEXT="courseid-ind"/>
+        <INDEX NAME="courseid-ind" UNIQUE="false" FIELDS="courseid" PREVIOUS="userid-ind" NEXT="groupingid-ind"/>
+        <INDEX NAME="groupingid-ind" UNIQUE="false" FIELDS="groupingid" PREVIOUS="courseid-ind" NEXT="userid_courseid_ind"/>
+        <INDEX NAME="userid_courseid_ind" UNIQUE="false" FIELDS="userid, courseid" PREVIOUS="groupingid-ind" NEXT="userid_groupingid_ind"/>
+        <INDEX NAME="userid_groupingid_ind" UNIQUE="false" FIELDS="userid, groupingid" PREVIOUS="userid_courseid_ind" NEXT="courseid_groupingid_ind"/>
+        <INDEX NAME="courseid_groupingid_ind" UNIQUE="false" FIELDS="courseid, groupingid" PREVIOUS="userid_groupingid_ind" NEXT="userid_courseid_groupingid_ind"/>
+        <INDEX NAME="userid_courseid_groupingid_ind" UNIQUE="false" FIELDS="userid, courseid, groupingid" PREVIOUS="courseid_groupingid_ind"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="block_bcgt_mod_linking" COMMENT="This is the table that contains the mods we support the auto linking and due dates for. Please note that bcgt will allow the linking of Grade Tracker with ANY gradeable mod." PREVIOUS="block_bcgt_user_grouping">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" NEXT="moduleid"/>
+        <FIELD NAME="moduleid" TYPE="int" LENGTH="18" NOTNULL="true" SEQUENCE="false" COMMENT="The is the id of the module from modules." PREVIOUS="id" NEXT="modtablename"/>
+        <FIELD NAME="modtablename" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="This is the name of the modules table. E.g. assign would be assign, assignment is assignment, turnitin is turnitintool . Therefore its not always consistant." PREVIOUS="moduleid" NEXT="modtablecoursefname"/>
+        <FIELD NAME="modtablecoursefname" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="This is the course field name in the mod table. For example it may be courseid or it may be course. This is the course that the module has been added to." PREVIOUS="modtablename" NEXT="modtableduedatefname"/>
+        <FIELD NAME="modtableduedatefname" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This is the optional field name of the due date column in the mod table. E.g what are we querying to find the due date of a module. TimeDue, Date due, due date etc. Not all mods will have this." PREVIOUS="modtablecoursefname" NEXT="modsubmissiontable"/>
+        <FIELD NAME="modsubmissiontable" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This is the name of the table that we are looking to see about the submissions or attempts of the module. E.g. for assign its assign_submssions." PREVIOUS="modtableduedatefname" NEXT="submissionuserfname"/>
+        <FIELD NAME="submissionuserfname" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This is the name of the column where the userid is stored in the modules submission table. E.g. is it user or is it userid." PREVIOUS="modsubmissiontable" NEXT="submissiondatefname"/>
+        <FIELD NAME="submissiondatefname" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This is the name of the column where we find what date the submission was made/attempted. e,g. datecreated, datesubmitted." PREVIOUS="submissionuserfname" NEXT="submissionmodidfname"/>
+        <FIELD NAME="submissionmodidfname" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This is the name of the column where we will find the id of the module instance from the module table associated with this submission. E.g. in assign_submission the module instance id is found in the column assignment." PREVIOUS="submissiondatefname" NEXT="checkforautotracking"/>
+        <FIELD NAME="checkforautotracking" TYPE="int" LENGTH="1" NOTNULL="false" SEQUENCE="false" COMMENT="This denotes if we are going to check and alter the tracking sheets that are linked to these mods for the values of IN, NOT IN and LATE." PREVIOUS="submissionmodidfname"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

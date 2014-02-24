@@ -7,8 +7,10 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
-require_once('BTECFoundationQualification.class.php');
-require_once('BTECUnit.class.php');
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFoundationQualification.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
 class BTECFoundationUnit extends BTECUnit {	
 		
     protected $finalProject;

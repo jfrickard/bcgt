@@ -36,6 +36,11 @@ $PAGE->set_heading(get_string('addactivitylinks', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('gridselect', 'block_bcgt'));
 $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
+if($cID != -1)
+{
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($cID));
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$cID,'title');
+}
 $PAGE->navbar->add(get_string('addactivitylinks', 'block_bcgt'),'activities.php?tab=unit&cID=2','title');
 
 $jsModule = array(
@@ -55,7 +60,9 @@ $out .= html_writer::start_tag('div', array('class'=>'bcgt_activity_controls',
     'id'=>'editCourseQual'));
 $out .= '<form name="addActivity" action"#" method="POST" id="addActivity"/>';
 //get all of the qual families that are on this course
-$families = get_course_qual_families($cID);
+$includeFamilies = array('BTEC');
+    //get all of the qual families that are on this course
+$families = get_course_qual_families($cID, $includeFamilies);
 if($families)
 {
     //for each family get the parent family

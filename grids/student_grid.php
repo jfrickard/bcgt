@@ -27,6 +27,7 @@ $qualID = optional_param('qID', -1, PARAM_INT);
 $studentID = optional_param('sID', -1, PARAM_INT);
 $forceLoad = optional_param('fload', true, PARAM_BOOL);
 $clearSession = optional_param('csess', true, PARAM_BOOL);
+$order = optional_param('order', 'spec', PARAM_TEXT);
 
 
 //TODO::::::
@@ -90,7 +91,6 @@ $PAGE->set_heading(get_string('bcgtmydashboard', 'block_bcgt'));
 $PAGE->set_cacheable(true);
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('bcgtmydashboard', 'block_bcgt'));
-$PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),$CFG->wwwroot.'/blocks/bcgt/forms/my_dashboard.php?tab=track','title');
 $jsModule = array(
     'name'     => 'block_bcgt',
     'fullpath' => '/blocks/bcgt/js/block_bcgt.js',
@@ -98,10 +98,13 @@ $jsModule = array(
 );
 
 $link1 = null;
+$link2 = null;
 if(has_capability('block/bcgt:viewclassgrids', $context))
 {
     $link1 = $CFG->wwwroot.'/blocks/bcgt/forms/grid_select.php?&cID='.$courseID;
+	$link2 = $CFG->wwwroot.'/blocks/bcgt/forms/my_dashboard.php?tab=track';
 }
+$PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),$link2,'title');
 $PAGE->navbar->add(get_string('grids', 'block_bcgt'),$link1,'title');
 $firstname = '';
 $lastname = '';
@@ -212,6 +215,35 @@ $out = $OUTPUT->header();
 	}
     $out .= html_writer::tag('h2', $heading, 
         array('class'=>'formheading'));
+    
+    $out .= '<input type="hidden" id="order" value="'.$order.'" name="order"/>';
+    if($activities = bcgt_user_activities($qualID, $studentID, -1))
+    {
+        //if we have activities then show the other options
+        $out .= '<div class="tabs"><div class="tabtree">';
+        $out .= '<ul class="tabrow0">';
+        if($order == '')
+        {
+            $order = 'spec';
+        }
+        $focus = ($order == 'spec')? 'focus' : '';
+        $out.= '<li class="last '.$focus.'">'.
+            '<a order="spec" class="ordertab" href="?&sID='.$studentID.
+                '&qID='.$qualID.'&cID='.$courseID.'&order=spec">'.
+            '<span>'.get_string('byspec', 'block_bcgt').'</span></a></li>';
+        $focus = ($order == 'actunit')? 'focus' : '';
+        $out.= '<li class="first '.$focus.'">'.
+                '<a order="actunit" class="ordertab" href="?&sID='.$studentID.
+                '&qID='.$qualID.'&cID='.$courseID.'&order=actunit">'.
+                '<span>'.get_string('orderbyactivityunit', 'block_bcgt').'</span></a></li>';
+        $focus = ($order == 'unitact')? 'focus' : '';
+        $out.= '<li class="last '.$focus.'">'.
+                '<a order="unitact" class="ordertab" href="?&sID='.$studentID.
+                '&qID='.$qualID.'&cID='.$courseID.'&order=unitact">'.
+                '<span>'.get_string('orderbyunitactivity', 'block_bcgt').'</span></a></li>';
+    }
+    $out.= '</ul>';
+    $out.= '</div></div>';
     
     $out .= html_writer::start_tag('div', array('class'=>'bcgt_grid_outer', 
     'id'=>'studentGridOuter'));

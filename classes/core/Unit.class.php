@@ -493,8 +493,11 @@ abstract class Unit {
         $this->student = $DB->get_record("user", array("id" => $studentID));
         
 		//is the student doing this unit?
-		$onThisUnit = $this->student_doing_unit($qualID);
-                                        
+        $onThisUnit = true;
+        if($qualID != -1)
+        {
+            $onThisUnit = $this->student_doing_unit($qualID); 
+        }                       
 		if($onThisUnit)
 		{
 			$this->studentDoing = true;
@@ -529,7 +532,7 @@ abstract class Unit {
                         $this->set_date_updated($unitAward->dateupdated);
                     }                  
 				}
-				else
+				elseif(!isset($loadParams->calcAward) || (isset($loadParams->calcAward) && $loadParams->calcAward))
 				{
 					//ok go and calculate it if we can.
 					$this->userAward = $this->calculate_unit_award($qualID);
@@ -641,7 +644,7 @@ abstract class Unit {
     protected static function get_quals_roles($unitID, $search = '', $userID = -1, $roles = array(), $courseID = -1)
     {
         global $DB;
-		$sql = "SELECT qual.id AS id, type.type, level.trackinglevel, 
+		$sql = "SELECT distinct(qual.id) AS id, type.type, level.trackinglevel, 
             subtype.subtype, qual.name, family.family, qual.additionalname 
             FROM {block_bcgt_qual_units} AS qualUnits 
 		JOIN {block_bcgt_qualification} AS qual ON qual.id = qualUnits.bcgtqualificationid 
@@ -1181,7 +1184,9 @@ abstract class Unit {
 	protected function get_student_unit_values($qualID = -1)
 	{
 		global $DB;
-		$sql = "SELECT userunit.*, value.* 
+		$sql = "SELECT distinct(userunit.id), userunit.*, value.shortvalue, value.ranking, value.value, 
+            value.customvalue, value.customshortvalue, value.context, 
+            value.bcgttypeid, value.bcgttargetqualid, value.specialval
 		FROM {block_bcgt_user_unit} AS userunit 
 		LEFT OUTER JOIN {block_bcgt_value} AS value ON value.id = userunit.bcgtvalueid
 		WHERE userid = ? AND bcgtunitid = ?";
@@ -1191,7 +1196,12 @@ abstract class Unit {
 			$sql .= " AND bcgtqualificationid = ?";
             $params[] = $qualID;
 		}
-		return $DB->get_record_sql($sql, $params);
+		$records = $DB->get_records_sql($sql, $params);
+        if($records)
+        {
+            return end($records);
+        }
+        return false;
 	}
     
     /**
@@ -1500,6 +1510,49 @@ abstract class Unit {
 		}
 		return false;
 	}
+    
+    public function get_users_on_unit($unitID, $editableByUserID = -1, $courseID = -1, $groupingID = -1)
+    {
+        global $DB;
+        $sql = "SELECT distinct(user.id), user.*
+            FROM {user} user 
+            JOIN {block_bcgt_user_unit} userunit ON user.id = userunit.userid
+            JOIN {block_bcgt_user_qual} userqual ON userqual.userid = user.id
+            JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtqualificationid = userqual.bcgtqualificationid 
+            AND qualunits.bcgtunitid = userunit.bcgtunitid
+            JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = userqual.bcgtqualificationid ";
+        if($editableByUserID != -1)
+        {
+            $sql .= ' JOIN {block_bcgt_user_qual} userqualedit ON userqualedit.bcgtqualificationid = userqual.bcgtqualificationid 
+                JOIN {role} role ON role.id = userqualedit.roleid';
+        }
+        if($groupingID != -1)
+        {
+            $sql .= ' JOIN {groups_members} members ON members.userid = user.id 
+                JOIN {groupings_groups} gg ON gg.groupid = members.groupid';
+        }
+        $sql .= " WHERE userunit.bcgtunitid = ?";
+        $params = array();
+        $params[] = $unitID;
+        if($editableByUserID != -1)
+        {
+            $sql .= ' AND userqualedit.userid = ? AND (role.shortname = ? OR role.shortname = ?) ';
+            $params[] = $editableByUserID;
+            $params[] = 'teacher';
+            $params[] = 'editingteacher';
+        }
+        if($courseID != -1)
+        {
+            $sql .= ' AND coursequal.courseid = ?';
+            $params[] = $courseID;
+        }
+        if($groupingID != -1)
+        {
+            $sql .= ' AND gg.groupingid = ?';
+            $params[] = $groupingID;
+        }
+        return $DB->get_records_sql($sql, $params);
+    }
 
     /**
 	 * Builds the table of the unit information that gets presented to the 
@@ -1563,9 +1616,14 @@ abstract class Unit {
     protected function retrieve_comments()
     {
         global $DB;
-        $check = $DB->get_record_select("block_bcgt_user_unit", 
+        $checks = $DB->get_records_select("block_bcgt_user_unit", 
                 "userid = ? AND bcgtqualificationid = ? AND bcgtunitid = ?",  
                 array($this->studentID,$this->qualID,$this->id));
+        $check = new stdClass();
+        if($checks)
+        {
+            $check = end($checks);
+        }
         if(!isset($check->id) || is_null($check->id) || $check->comments == ""){
             return "";
         }
@@ -1897,7 +1955,12 @@ abstract class Unit {
 		$sql = "SELECT * FROM {block_bcgt_user_unit} 
 		WHERE bcgtqualificationid = ? AND userid = ? AND
 		bcgtunitid = ?";
-		return $DB->get_record_sql($sql, array($qualID, $this->studentID, $this->id));
+		$records =  $DB->get_records_sql($sql, array($qualID, $this->studentID, $this->id));
+        if($records)
+        {
+            return end($records);
+        }
+        return false;
 	}
     
     /**

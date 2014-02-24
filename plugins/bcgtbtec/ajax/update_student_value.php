@@ -41,32 +41,49 @@ if($user == -1)
 }
 $retval = new stdClass();
 //get the qual from the browser
-if($grid == 'student')
+if($grid == 'student' || $grid == 'act')
 {
     require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Qualification.class.php');
-    $sessionQuals = isset($_SESSION['session_stu_quals'])? 
-        unserialize(urldecode($_SESSION['session_stu_quals'])) : array();
-    //this will be an array of studentID => qualarray->qual object->qual
-    $qualification = null;
-    if(array_key_exists($studentID, $sessionQuals))
-    {
-        //the sessionsQuals[studentID] is an array of qualid =>object
-        //where object has qualification and session start
-        $studentQualArray = $sessionQuals[$studentID];
-        if(array_key_exists($qualID, $studentQualArray))
+    if($grid == 'student')
+    { 
+        $sessionQuals = isset($_SESSION['session_stu_quals'])? 
+            unserialize(urldecode($_SESSION['session_stu_quals'])) : array();
+        //this will be an array of studentID => qualarray->qual object->qual
+        $qualification = null;
+        if(array_key_exists($studentID, $sessionQuals))
         {
-            $qualObject = $studentQualArray[$qualID];
-            $qualification = $qualObject->qualification;
+            //the sessionsQuals[studentID] is an array of qualid =>object
+            //where object has qualification and session start
+            $studentQualArray = $sessionQuals[$studentID];
+            if(array_key_exists($qualID, $studentQualArray))
+            {
+                $qualObject = $studentQualArray[$qualID];
+                $qualification = $qualObject->qualification;
+            }
         }
     }
+    elseif($grid == 'act')
+    {
+        $sessionActs = isset($_SESSION['session_act'])? 
+            unserialize(urldecode($_SESSION['session_act'])) : array();
+        //this will be an array of studentID => qualarray->qual object->qual
+        $qualification = null;
+        if(array_key_exists($qualID, $sessionActs->quals))
+        {
+            $qualification = $sessionActs->quals[$qualID];
+        }
+    }
+    $stuLoaded = false;
     $valueID = $value;
     if(!$qualification)
     {
         $loadParams = new stdClass();
         $loadParams->loadLevel = Qualification::LOADLEVELALL;
+        $loadParams->loadAward = true;
         $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
         if($qualification)
         {
+            $stuLoaded = true;
             $qualification->load_student_information($studentID,
                 $loadParams);
         }
@@ -81,7 +98,11 @@ if($grid == 'student')
         }  
         if($criteria)
         {    
-
+            //we might not have loaded the student information??
+            if(!$stuLoaded)
+            {
+                $criteria->load_student_information($studentID, $qualID);
+            }
             if($vType == 'check')
             {
                 //then its just the check box and so we need to get the met and not met value
@@ -279,20 +300,28 @@ if($grid == 'student')
     //                $retval .= "<error>{$GLOBALS['AJAX_ERROR']}</error>";
 
 
-        $qualArray = $sessionQuals[$studentID];
-        if(array_key_exists($qualID, $qualArray))
-        {
-            $qualObject = $qualArray[$qualID];
-        }
-        else 
-        {
-            $qualObject = new stdClass();
-        }
+        if($grid == 'student')
+        { 
+            $qualArray = $sessionQuals[$studentID];
+            if(array_key_exists($qualID, $qualArray))
+            {
+                $qualObject = $qualArray[$qualID];
+            }
+            else 
+            {
+                $qualObject = new stdClass();
+            }
 
-        $qualObject->qualification = $qualification;
-        $qualArray[$qualID] = $qualObject;
-        $sessionQuals[$studentID] = $qualArray;
-        $_SESSION['session_stu_quals'] = urlencode(serialize($sessionQuals));
+            $qualObject->qualification = $qualification;
+            $qualArray[$qualID] = $qualObject;
+            $sessionQuals[$studentID] = $qualArray;
+            $_SESSION['session_stu_quals'] = urlencode(serialize($sessionQuals));
+        }
+        elseif($grid == 'act')
+        {
+            $sessionActs->quals[$qualID] = $qualification;
+            $_SESSION['session_act'] = urlencode(serialize($sessionActs));
+        }
 
 
         echo json_encode( $retval );
@@ -304,8 +333,45 @@ if($grid == 'student')
 }
 elseif($grid == 'unit')
 {
+    $retval = '';
+    if($qualID == -1)
+    {
+        //then we need to work out what qualid this
+        //user is on for this unit what happens if they are on more than one?
+        $sql = "SELECT * FROM {block_bcgt_user_unit} WHERE userid = ? AND bcgtunitid = ?";
+        $records = $DB->get_records_sql($sql, array($studentID, $unitID));
+        if($records)
+        {
+            $retval = new stdClass();
+            $returnArray = array();
+            $retval->multiple = true;
+            foreach($records AS $record)
+            {
+                $returnArray[] = process_bcgt_btec_uit_criteria_check($record->bcgtqualificationid, $unitID, $value, $studentID, $criteriaID, $vType, $user); 
+            }
+            $retval->multipleArray = $returnArray;
+        }
+    }
+    else
+    {
+        $retval = process_bcgt_btec_uit_criteria_check($qualID, $unitID, $value, $studentID, $criteriaID, $vType, $user);
+        $retval->multiple = false;  
+    }
+    if($retval != '')
+    {
+        echo json_encode( $retval );
+    }
+    else
+    {
+        echo json_encode("No Unit Loaded");
+    }
+}
+
+function process_bcgt_btec_uit_criteria_check($qualID, $unitID, $value, $studentID, $criteriaID, $vType, $user)
+{
+    $retval = new stdClass();
     $valueID = $value;
-    global $CFG;
+    global $CFG, $DB;
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECQualification.class.php');
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECCriteria.class.php');
@@ -317,20 +383,24 @@ elseif($grid == 'unit')
     {
         $unitObject = $sessionUnits[$unitID];
         $unit = $unitObject->unit;
-        $qualArray = $unitObject->qualArray;
-        if(array_key_exists($qualID, $qualArray))
+        if(isset($unitObject->qualArray))
         {
-            $studentArray = $qualArray[$qualID];
-            if(array_key_exists($studentID, $studentArray))
+            $qualArray = $unitObject->qualArray;
+            if(array_key_exists($qualID, $qualArray))
             {
-                $studentObject = $studentArray[$studentID];
-                $studentUnit = $studentObject->unit;
-                if($studentUnit)
+                $studentArray = $qualArray[$qualID];
+                if(array_key_exists($studentID, $studentArray))
                 {
-                    $studentUnitFound = true;
+                    $studentObject = $studentArray[$studentID];
+                    $studentUnit = $studentObject->unit;
+                    if($studentUnit)
+                    {
+                        $studentUnitFound = true;
+                    }
                 }
             }
-        } 
+        }
+         
     }
     //will be used later
     $loadParams = new stdClass();
@@ -517,32 +587,25 @@ elseif($grid == 'unit')
 
             $retval->qualaward = $jsonQualAward;
             $retval->time = date('H:i:s');
-        }
-
-    //                // Get the logs for this qual & student
-    //                $user = get_record_select("user", "`id` = '{$studentID}'", "username");
-    //                $params['qualID'] = $qualID;
-    //                $params['student'] = $user->username;
-    //                $params['lastID'] = (isset($_SESSION['lastLogID'][$qualID])) ? $_SESSION['lastLogID'][$qualID] : 0;
-    //                $logXml = Log::get_grid_xml($params);
-    //                                
-    //                $retval .= $logXml;
-    //                                
-    //                $retval .= "<error>{$GLOBALS['AJAX_ERROR']}</error>";
-
-
-        
-        
-        
+        }   
+         
         if(array_key_exists($unitID, $sessionUnits))
         {
             $unitObject = $sessionUnits[$unitID];
             $unit = $unitObject->unit;
-            $qualArray = $unitObject->qualArray;
+            if(isset($unitObject->qualArray))
+            {
+                $qualArray = $unitObject->qualArray;
+            }
+            else
+            {
+                $qualArray = array();
+            }
         }
         else
         {
-            //it hasnt been loaded into the session before! (can it even get here if this is the case?)
+            //it hasnt been loaded into the session before! (can it even get here if this is the case?
+            ////yes if it is the unit class grid. 
             //then we need to add it
             $unitObject = new stdClass();
             $unitObject->unit = Unit::get_unit_class_id($unitID, $loadParams);
@@ -570,14 +633,8 @@ elseif($grid == 'unit')
         $unitObject->qualArray = $qualArray;
         $sessionUnits[$unitID] = $unitObject;
         $_SESSION['session_unit'] = urlencode(serialize($sessionUnits));
-
-
-        echo json_encode( $retval );
     }
-    else
-    {
-        echo json_encode("No Unit Loaded");
-    }
+    return $retval;
 }
 
 ?>

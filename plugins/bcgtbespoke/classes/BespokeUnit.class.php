@@ -1924,6 +1924,174 @@ class BespokeUnit extends Unit {
     
     
     
+    public function print_grid($qualID)
+    {
+        
+        global $CFG, $COURSE, $printGrid, $OUTPUT;
+        $printGrid = true;
+        $context = context_course::instance($COURSE->id);
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }
+        
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELALL;
+        $loadParams->loadAward = true;
+        $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
+        if (is_null($qualification) || !$qualification) return false;    
+        
+        $criteriaNames = $this->get_used_criteria_names();
+
+        echo "<!doctype html><html><head>";
+        echo "<link rel='stylesheet' type='text/css' href='{$CFG->wwwroot}/blocks/bcgt/print.css'>";
+        echo load_javascript(false, true);
+        
+        $logo = get_config('bcgt', 'logoimgurl');
+        
+        echo "</head><body style='background: url(\"{$logo}\") no-repeat;'>";
+                
+        echo "<div class='c'>";
+        
+            echo "<h1>{$qualification->get_display_name()}</h1>";
+            echo "<h2>{$this->get_display_name()}</h2>";
+
+            echo "<br><br>";
+            
+            // Key
+            echo "<div id='key'>";
+                echo $qualification->get_grid_key();
+            echo "</div>";
+            
+            
+            
+            echo "<br><br>";
+            
+            echo "<table id='printGridTable'>";
+            
+            
+            echo "<thead>";
+            echo "<tr>";
+                echo "<th></th>";
+                echo "<th></th>";
+                echo "<th>".get_string('user')."</th>";
+                echo "<th>".get_string('unitaward', 'block_bcgt')."</th>";
+                echo "<th>".get_string('qualaward', 'block_bcgt')."</th>";
+
+                $colCount = 5;
+
+
+                if ($criteriaNames)
+                {
+                    foreach($criteriaNames as $name)
+                    {
+                        echo "<th>{$name}</th>";
+                        $colCount++;
+                    }
+                }
+
+            echo "</tr>";
+            echo "</thead>";
+            
+            
+
+            echo "<tbody>";
+
+            $studentsArray = get_users_on_unit_qual($this->id, $qualID);
+
+            if ($studentsArray)
+            {
+                foreach($studentsArray as $student)
+                {
+
+                    echo "<tr>";
+
+                    $qualification->load_student_information($student->id, $loadParams);
+                    $this->load_student_information($student->id, $qualID, $loadParams);
+
+                    // Student grid link
+                    echo "<td></td>";
+
+                    // Student pic & name
+                    echo "<td>".$OUTPUT->user_picture($student, array('size' => 25))."</td>";
+
+                    echo "<td class='studentUnit' title=''>".fullname($student)." ({$student->username})</td>";
+
+
+                    // Unit award
+                    $unitAward = $this->get_user_award();
+                    $award = '-';
+                    if ($unitAward)
+                    {
+                        $award = $unitAward->get_award();
+                    }
+
+
+                    echo "<td id='unitAward_U{$this->id}_Q{$qualID}_S{$student->id}'>{$award}</td>";
+
+
+                    // Qual award
+                    $qualAward = $qualification->get_student_award();
+                    $award = '-';
+                    if ($qualAward)
+                    {
+                        $award = $qualAward->get_award();
+                    }
+
+                    echo "<td><span class='finalAward_S{$student->id}_Q{$qualID}'>{$award}</span></td>";
+                    
+
+                    // Criteria
+                    if ($criteriaNames)
+                    {
+                        foreach($criteriaNames as $name)
+                        {
+                            $studentCriteria = $this->get_single_criteria(-1, $name);
+                            if ($studentCriteria)
+                            {
+                                echo $studentCriteria->get_td('unit', false, $this->student, $qualification, $this);
+                            }
+                            else
+                            {
+                                echo "<td></td>";
+                            }
+
+                        }
+                    }
+
+                    echo "</tr>";
+
+                }
+            }
+            else
+            {
+                echo "<tr><td colspan='{$colCount}'>".get_string('nostudentsfound', 'block_bcgt')."</td></tr>";
+            }
+
+            echo "</tbody>";
+            
+            
+            
+            
+            
+            echo "</table>";
+            echo "</div>";
+            
+            //echo "<br class='page_break'>";
+            
+            // Comments and stuff
+            // TODO at some point
+            
+            echo "<script> $('a').contents().unwrap(); $('.studentUnitInfo').remove(); </script>";
+            
+        echo "</body></html>";
+            
+            
+            
+    }
+    
+    
     
     /**
      * This method is on every non abstract class!

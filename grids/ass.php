@@ -19,9 +19,11 @@ $qID = optional_param('qID', -1, PARAM_INT);
 $sID = optional_param('sID', -1, PARAM_INT);
 $pID = optional_param('pID', -1, PARAM_INT);
 $view = optional_param('v', 'q', PARAM_TEXT);
+$groupingID = optional_param('grID', -1, PARAM_INT);
+$edit = optional_param('edit', false, PARAM_BOOL);
 $editing = false;
 $save = false;
-if(isset($_POST['edit']))
+if(isset($_POST['edit']) || $edit)
 {
     $editing = true;
 }
@@ -96,6 +98,7 @@ $out = $OUTPUT->header();
     $out .= '<input type="hidden" name="sID" value="'.$sID.'"/>';
     $out .= '<input type="hidden" name="pID" value="'.$pID.'"/>';
     $out .= '<input type="hidden" name="qID" value="'.$qID.'"/>';
+    $out .= '<input type="hidden" name="grID" value="'.$groupingID.'"/>';
     $out .= '<input type="hidden" name="v" value="'.$view.'"/>';
     $out .= html_writer::tag('h2', $heading.' - '.$projectName.' '.$projectDate, 
         array('class'=>'formheading'));
@@ -125,7 +128,7 @@ $out = $OUTPUT->header();
     if($view == 'q' || $view == 'qg')
     {
         //all students on one qual
-        $out .= $qualification->display_qual_assessments($editing, $save, $pID, $view);
+        $out .= $qualification->display_qual_assessments($editing, $save, $pID, $view, $groupingID);
     }
     elseif($view == 's' || $view == 'sg')
     {

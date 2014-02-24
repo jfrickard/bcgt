@@ -287,13 +287,20 @@ class AdminTab extends DashTab{
     private function get_activity_options($courseID)
     {
         global $CFG;
+        $currentContext = context_system::instance();
         //this needs to load up all of the qualification families
         //show alink to each
         $retval = '<ul class="bcgt_list bcgt_admin_list">';
 //            $retval .= '<li>'.get_string('manageactivitylinks', 'block_bcgt').'</li>';
-            $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/assessments.php?cID='.$courseID.'"'. 
-                    'title="'.get_string('managefahelp', 'block_bcgt').'">'.
-                    get_string('managefas', 'block_bcgt').'</a></li>';
+        $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/assessments.php?cID='.$courseID.'"'. 
+                'title="'.get_string('managefahelp', 'block_bcgt').'">'.
+                get_string('managefas', 'block_bcgt').'</a></li>';
+        if(has_capability('block/bcgt:managemodlinking', $currentContext))
+        {
+            $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/mod_linking.php?cID='.$courseID.'"'. 
+                'title="'.get_string('managemodlinkinghelp', 'block_bcgt').'">'.
+                get_string('managemodlinking', 'block_bcgt').'</a></li>';
+        }
         $retval .= '</ul>';
         return $retval;
     }
@@ -460,12 +467,12 @@ class AdminTab extends DashTab{
                     'title="'.get_string('importhelp', 'block_bcgt').'">'.
                     get_string('import', 'block_bcgt').'</a></li>';
         }
-        if(has_capability('block/bcgt:exportdata', $courseContext))
-        {
-            $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/export.php?cID='.$courseID.'"'. 
-                    'title="'.get_string('exporthelp', 'block_bcgt').'">'.
-                    get_string('export', 'block_bcgt').'</a></li>';
-        }
+//        if(has_capability('block/bcgt:exportdata', $courseContext))
+//        {
+//            $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/export.php?cID='.$courseID.'"'. 
+//                    'title="'.get_string('exporthelp', 'block_bcgt').'">'.
+//                    get_string('export', 'block_bcgt').'</a></li>';
+//        }
         if(has_capability('block/bcgt:rundatacleanse', $courseContext))
         {
             $retval .= '<li><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/data_cleanse.php?cID='.$courseID.'"'. 

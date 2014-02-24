@@ -1356,7 +1356,6 @@ class Criteria {
         $stdObj->bcgtqualificationid = $qualID;
         if($this->studentValue)
         {
-            pn("value is set");
             $stdObj->bcgtvalueid = $this->studentValue->get_id();
         }
         if($this->comments)
@@ -1404,10 +1403,7 @@ class Criteria {
             $stdObj->bcgttargetgradesid = $this->targetgradeID;
         }
         $stdObj->flag = $this->studentFlag; 
-        
-        pn("stdobj");
-        pn($stdObj);
-        
+                
         if(isset($stdObj->bcgtvalueid) && $stdObj->bcgtvalueid > 0)
         {
             logAction(LOG_MODULE_GRADETRACKER, LOG_ELEMENT_GRADETRACKER_CRITERIA, LOG_VALUE_GRADETRACKER_UPDATED_CRIT_AWARD, $this->studentID, $this->qualID, $this->unitID, null, $stdObj->bcgtvalueid);

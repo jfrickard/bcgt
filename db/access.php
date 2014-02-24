@@ -693,8 +693,21 @@ $capabilities = array(
         ), 
     ),
     
+    'block/bcgt:manageusersgroups' => array(
+        'captype' => 'edit',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array( 
+            
+        ), 
+    ),
     
-    
+    'block/bcgt:managemodlinking' => array(
+        'captype' => 'edit',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array( 
+            
+        ), 
+    ),
     
     
 );

@@ -301,6 +301,77 @@ function xmldb_block_bcgt_install()
     $record->points = 0;
     $DB->insert_record('block_bcgt_prior_qual_grades', $record);
 
+    //THE MOD LINKING
+    //assign
+    $sql = "SELECT * FROM {modules} WHERE name = ?";
+    $assign = $DB->get_record_sql($sql, array('assign'));
+    if($assign)
+    {
+        $stdObj = new stdClass();
+        $stdObj->moduleid = $assign->id;
+        $stdObj->modtablename = 'assign';
+        $stdObj->modtablecoursefname = 'course';
+        $stdObj->modtableduedatefname = 'duedate';
+        $stdObj->modsubmissiontable = 'assign_submission';
+        $stdObj->submissionuserfname = 'userid';
+        $stdObj->submissiondatefname = 'timecreated';
+        $stdObj->submissionmodidfname = 'assignment';
+        $stdObj->checkforautotracking = 1;
+        $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+    }
+
+    //assignment
+    $assignment = $DB->get_record_sql($sql, array('assignment'));
+    if($assignment)
+    {
+        $stdObj = new stdClass();
+        $stdObj->moduleid = $assignment->id;
+        $stdObj->modtablename = 'assignment';
+        $stdObj->modtablecoursefname = 'course';
+        $stdObj->modtableduedatefname = 'timedue';
+        $stdObj->modsubmissiontable = 'assignment_submissions';
+        $stdObj->submissionuserfname = 'userid';
+        $stdObj->submissiondatefname = 'timecreated';
+        $stdObj->submissionmodidfname = 'assignment';
+        $stdObj->checkforautotracking = 1;
+        $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+    }
+
+    //quiz
+    $quiz = $DB->get_record_sql($sql, array('quiz'));
+    if($quiz)
+    {
+        $stdObj = new stdClass();
+        $stdObj->moduleid = $quiz->id;
+        $stdObj->modtablename = 'quiz';
+        $stdObj->modtablecoursefname = 'course';
+        $stdObj->modtableduedatefname = 'timeclose';
+        $stdObj->modsubmissiontable = 'quiz_attempts';
+        $stdObj->submissionuserfname = 'userid';
+        $stdObj->submissiondatefname = 'timefinish';
+        $stdObj->submissionmodidfname = 'quiz';
+        $stdObj->checkforautotracking = 1;
+        $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+    }
+
+    //urnitindirect
+    $turnitin = $DB->get_record_sql($sql, array('turnitintool'));
+    if($turnitin)
+    {
+        $stdObj = new stdClass();
+        $stdObj->moduleid = $quiz->id;
+        $stdObj->modtablename = 'turnitintool';
+        $stdObj->modtablecoursefname = 'course';
+        $stdObj->modtableduedatefname = 'defaultdtdue';
+        $stdObj->modsubmissiontable = 'turnitintool_submissions';
+        $stdObj->submissionuserfname = 'userid';
+        $stdObj->submissiondatefname = 'submission_modified';
+        $stdObj->submissionmodidfname = 'turnitintoolid';
+        $stdObj->checkforautotracking = 1;
+        $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+    }
+    
+    
     require_once($CFG->dirroot.'/blocks/bcgt/bcgt.class.php');
     $bcgt = new bcgt();
     $bcgt->install_all_plugins();

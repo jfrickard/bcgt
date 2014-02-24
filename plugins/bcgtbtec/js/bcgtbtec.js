@@ -904,6 +904,11 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
 
     var qualID;
     var studentID;
+    var order = 'spec';
+    if($('#order'))
+    {
+        order = $('#order').attr('value');
+    }
     $(document).ready(function() {
         var selects = Y.one('#selects');
         if(selects != null && selects.get('value') == "yes")
@@ -972,7 +977,7 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
             }, oSettings );
         };
         
-        draw_BTEC_student_table(qualID, studentID, grid);
+        draw_BTEC_student_table(qualID, studentID, grid, order);
     } );
     
     var refreshpredgrade = Y.one('.refreshpredgrade');
@@ -1011,7 +1016,7 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
                     checked = 'L';
                 }
             }
-            redraw_BTEC_student_table(qualID, studentID, 's', checked);
+            redraw_BTEC_student_table(qualID, studentID, 's', checked, order);
         });
     }
     
@@ -1021,7 +1026,7 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
         editsimple.on('click', function(e){
             e.preventDefault();
             Y.one('#grid').set('value', 'se');
-            redraw_BTEC_student_table(qualID, studentID, 'se');
+            redraw_BTEC_student_table(qualID, studentID, 'se', false, order);
         });
     }
     
@@ -1031,7 +1036,7 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
         editadvanced.on('click', function(e){
             e.preventDefault();
             Y.one('#grid').set('value', 'ae');
-            redraw_BTEC_student_table(qualID, studentID, 'ae');
+            redraw_BTEC_student_table(qualID, studentID, 'ae', false, order);
         });
     }
    
@@ -1041,7 +1046,7 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
         viewadvanced.on('click', function(e){
             e.preventDefault();
             Y.one('#grid').set('value', 'a');
-            redraw_BTEC_student_table(qualID, studentID, 'a');
+            redraw_BTEC_student_table(qualID, studentID, 'a', false, order);
         });
     }
     
@@ -1056,11 +1061,212 @@ M.mod_bcgtbtec.initstudentgrid = function(Y, qualID, studentID, grid) {
             {
                 checked = 'L';
             }
-            redraw_BTEC_student_table(qualID, studentID, 's', checked);
+            redraw_BTEC_student_table(qualID, studentID, 's', checked, order);
        });     
     }
     
+    var orderChange = $('#order');
+    if(orderChange)
+    {
+        orderChange.on('change',function(e){
+//            $(":input").attr("disabled",true);
+            var form = $('#studentGridForm');
+            if(form)
+            {
+//                document.unitGridForm.submit();
+                $(form).submit();
+            }
+            
+        });
+    }
     
+    // buttons
+    $(function() {
+      var loc = window.location.href;     
+      if(/g=se/.test(loc)) {
+        $('#editsimple').addClass('gridbuttonswitchON');
+      }
+      else if(/g=s/.test(loc)) {
+        $('#viewsimple').addClass('gridbuttonswitchON');
+      }
+      else {}
+    });
+    
+    $(".gridbuttonswitch").click(function(){
+    $(".gridbuttonswitchON").removeClass("gridbuttonswitchON");
+     $(this).addClass("gridbuttonswitchON");
+    });
+}
+
+M.mod_bcgtbtec.initactgrid = function(Y, qualID, grid, courseID, groupingID, columnsLocked, configColumnWidth, cmID ) 
+{
+
+    $(document).ready(function() {
+        $.fn.dataTableExt.oApi.fnReloadAjax = function ( oSettings, sNewSource, fnCallback, bStandingRedraw )
+        {
+            if ( sNewSource !== undefined && sNewSource !== null ) {
+                oSettings.sAjaxSource = sNewSource;
+            }
+            // Server-side processing should just call fnDraw
+            if ( oSettings.oFeatures.bServerSide ) {
+                this.fnDraw();
+                //return;
+            }
+            this.oApi._fnProcessingDisplay( oSettings, true );
+            var that = this;
+            var iStart = oSettings._iDisplayStart;
+            var aData = [];
+
+            this.oApi._fnServerParams( oSettings, aData );
+            oSettings.fnServerData.call( oSettings.oInstance, oSettings.sAjaxSource, aData, function(json) {
+                /* Clear the old information from the table */
+                that.oApi._fnClearTable( oSettings );
+                /* Got the data - add it to the table */
+                var aData =  (oSettings.sAjaxDataProp !== "") ?
+                    that.oApi._fnGetObjectDataFn( oSettings.sAjaxDataProp )( json ) : json;
+
+                var dataLength = aData.length;
+                for ( var i=0 ; i<dataLength ; i++ )
+                {
+                    that.oApi._fnAddData( oSettings, aData[i] );
+                }
+                oSettings.aiDisplay = oSettings.aiDisplayMaster.slice();
+                that.fnDraw();
+                if ( bStandingRedraw === true )
+                {
+                    oSettings._iDisplayStart = iStart;
+                    that.oApi._fnCalculateEnd( oSettings );
+                    that.fnDraw( false );
+                }
+                that.oApi._fnProcessingDisplay( oSettings, false );
+                /* Callback user function - for event handlers etc */
+                if ( typeof fnCallback == 'function' && fnCallback !== null )
+                {
+                    fnCallback( oSettings );
+                }
+
+            }, oSettings );
+        };
+        draw_BTEC_act_table(qualID, grid, courseID, groupingID, columnsLocked, configColumnWidth, cmID);
+        
+        
+        var pageNumbers = $('.unitgridpage');
+        pageNumbers.each(function(pageNumber){
+        $(this).on('click',function(e){
+            e.preventDefault();
+            //get the page number:
+            
+            $('.unitgridpage').removeClass('active');
+            
+            var page = $(this).attr('page');
+            Y.one('#pageInput').set('value',page);
+            var checked = '';
+            if(Y.one('#showlate'))
+            {
+                checked = Y.one('#showlate').get('checked');
+                if(checked)
+                {
+                    checked = 'L';
+                }
+            }
+            var grid = Y.one('#grid').get('value');
+            redraw_BTEC_act_table(qualID, 's', checked, courseID, page, groupingID, cmID);
+            
+            $(this).addClass('active');
+            
+        });
+    } );
+    });
+        
+    var viewsimple = Y.one('#viewsimple');
+    if (viewsimple != null)
+    {
+        viewsimple.on('click', function(e){
+            e.preventDefault();
+            Y.one('#grid').set('value', 's');
+            var checked = '';
+            if(Y.one('#showlate'))
+            {
+                checked = Y.one('#showlate').get('checked');
+                if(checked)
+                {
+                    checked = 'L';
+                }
+            }
+            var page = 0;
+            if(Y.one('#pageInput'))
+            {
+                page = Y.one('#pageInput').get('value');
+            }
+            redraw_BTEC_act_table(qualID, 's', checked, courseID, page, groupingID, cmID);
+        });
+    }
+    
+    
+    var editsimple = Y.one('#editsimple');
+    if (editsimple != null){
+        editsimple.on('click', function(e){
+            e.preventDefault();
+            Y.one('#grid').set('value', 'se');
+            var page = 0;
+            if(Y.one('#pageInput'))
+            {
+                page = Y.one('#pageInput').get('value');
+            }
+            redraw_BTEC_act_table(qualID, 'se', false, courseID, page, groupingID, cmID);
+        });
+    }
+    
+    
+    var editadvanced = Y.one('#editadvanced');
+    if (editadvanced != null){
+        editadvanced.on('click', function(e){
+            e.preventDefault();
+            Y.one('#grid').set('value', 'ae');
+            var page = 0;
+            if(Y.one('#pageInput'))
+            {
+                page = Y.one('#pageInput').get('value');
+            }
+            redraw_BTEC_act_table(qualID, 'ae', false, courseID, page, groupingID, cmID);
+        });
+    }
+   
+    var viewadvanced = Y.one('#viewadvanced');
+    if (viewadvanced != null){
+        viewadvanced.detach();
+        viewadvanced.on('click', function(e){
+            e.preventDefault();
+            Y.one('#grid').set('value', 'a');
+            var page = 0;
+            if(Y.one('#pageInput'))
+            {
+                page = Y.one('#pageInput').get('value');
+            }
+            redraw_BTEC_act_table(qualID, 'a', false, courseID, page, groupingID, cmID);
+        });
+    }
+    
+    
+    var viewLate = Y.one('#showlate');
+    if(viewLate)
+    {
+        viewLate.detach();
+        viewLate.on('click', function(e){
+            var checked = viewLate.get('checked');
+            if(checked)
+            {
+                checked = 'L';
+            }
+            var page = 0;
+            if(Y.one('#pageInput'))
+            {
+                page = Y.one('#pageInput').get('value');
+            }
+            redraw_BTEC_act_table(qualID, 's', checked, courseID, page, groupingID, cmID);
+       });     
+    }
+        
     // buttons
     $(function() {
       var loc = window.location.href;     
@@ -1120,11 +1326,11 @@ function show_late(show)
     }
 }
 
-M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configColumnWidth) {
+M.mod_bcgtbtec.initclassgrid = function(Y, qualID, columnsLocked, configColumnWidth) {
 
     var qualID;
-    var unitID;
     var courseID;
+    var groupID;
     $(document).ready(function() {
         var selects = Y.one('#selects').get('value');
         if(selects == "yes")
@@ -1133,18 +1339,23 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
                 var index = Y.one("#qualChange").get('selectedIndex');
                 qualID = Y.one("#qualChange").get("options").item(index).getAttribute('value');
             }
-            
-            if (Y.one("#unitChange") != null){
-                var index2 = Y.one("#unitChange").get('selectedIndex');
-                unitID = Y.one("#unitChange").get("options").item(index2).getAttribute('value');
+            else
+            {
+                qualID = -1;
             }
         }
         else
         {
-            unitID = Y.one('#uID').get('value');
-            qualID = Y.one('#qID').get('value');   
+            qualID = -1;
+            if(Y.one('#qID'))
+            {
+                qualID = Y.one('#qID').get('value');  
+            }
+             
         }
-        courseID = Y.one('#cID').get('value');
+        //this is the course we are searching for/filtering
+        courseID = Y.one('#scID').get('value');
+        groupID = Y.one('#grID').get('value');
         $.fn.dataTableExt.oApi.fnReloadAjax = function ( oSettings, sNewSource, fnCallback, bStandingRedraw )
         {
             if ( sNewSource !== undefined && sNewSource !== null ) {
@@ -1194,7 +1405,168 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
         //need to get the grid
         var grid = $('#grid');
         var gridVal = grid.val();
-        draw_BTEC_unit_table(qualID, unitID, gridVal, courseID, columnsLocked, configColumnWidth);
+        draw_BTEC_class_table(qualID, gridVal, courseID, columnsLocked, configColumnWidth, groupID);
+        var pageNumbers = $('.classgridpage');
+        pageNumbers.each(function(pageNumber){
+        $(this).on('click',function(e){
+            e.preventDefault();
+            //get the page number:
+            
+            $('.classgridpage').removeClass('active');
+            
+            var page = $(this).attr('page');
+            Y.one('#pageInput').set('value',page);
+            var checked = '';
+            var grid = Y.one('#grid').get('value');
+            redraw_BTEC_class_table(qualID, grid, checked, courseID, page, groupID);
+            
+            $(this).addClass('active');
+            
+        });
+    });
+        
+    } );
+
+    var viewsimple = Y.one('#viewsimple');
+    viewsimple.on('click', function(e){
+        e.preventDefault();
+        Y.one('#grid').set('value', 's');
+        var page = 1;
+        if(Y.one('#pageInput'))
+        {
+            page = Y.one('#pageInput').get('value');
+        }
+        redraw_BTEC_class_table(qualID, 's', '', courseID, page, groupID);
+    });
+    
+    var editsimple = Y.one('#editsimple');
+    editsimple.on('click', function(e){
+        e.preventDefault();
+        Y.one('#grid').set('value', 'se');
+        var page = 1;
+        if(Y.one('#pageInput'))
+        {
+            page = Y.one('#pageInput').get('value');
+        }
+        redraw_BTEC_class_table(qualID, 'se', '', courseID, page, groupID);
+    });
+        
+    // buttons
+    $(function() {
+      var loc = window.location.href;     
+      if(/g=se/.test(loc)) {
+        $('#editsimple').addClass('gridbuttonswitchON');
+      }
+      else if(/g=s/.test(loc)) {
+        $('#viewsimple').addClass('gridbuttonswitchON');
+      }
+      else {}
+    });
+    
+    $(".gridbuttonswitch").click(function(){
+    $(".gridbuttonswitchON").removeClass("gridbuttonswitchON");
+     $(this).addClass("gridbuttonswitchON");
+    });
+}
+
+M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configColumnWidth) {
+
+    var qualID;
+    var unitID;
+    var courseID = -1;
+    var groupingID = -1;
+    var order = '';
+    if($('#order'))
+    {
+        order = $('#order').find(":selected").val();
+    }
+    $(document).ready(function() {
+        var selects = Y.one('#selects').get('value');
+        if(selects == "yes")
+        {
+            if (Y.one("#qualChange") != null){
+                var index = Y.one("#qualChange").get('selectedIndex');
+                qualID = Y.one("#qualChange").get("options").item(index).getAttribute('value');
+            }
+            else
+            {
+                qualID = -1;
+            }
+            
+            if (Y.one("#unitChange") != null){
+                var index2 = Y.one("#unitChange").get('selectedIndex');
+                unitID = Y.one("#unitChange").get("options").item(index2).getAttribute('value');
+            }
+        }
+        else
+        {
+            unitID = Y.one('#uID').get('value');
+            qualID = -1;
+            if(Y.one('#qID'))
+            {
+                qualID = Y.one('#qID').get('value');  
+            }
+             
+        }
+        if(Y.one('#scID'))
+        {
+            courseID = Y.one('#scID').get('value');   
+        }
+        if(Y.one('#grID'))
+        {
+            groupingID = Y.one('#grID').get('value');  
+        }
+        
+        $.fn.dataTableExt.oApi.fnReloadAjax = function ( oSettings, sNewSource, fnCallback, bStandingRedraw )
+        {
+            if ( sNewSource !== undefined && sNewSource !== null ) {
+                oSettings.sAjaxSource = sNewSource;
+            }
+            // Server-side processing should just call fnDraw
+            if ( oSettings.oFeatures.bServerSide ) {
+                this.fnDraw();
+                //return;
+            }
+            this.oApi._fnProcessingDisplay( oSettings, true );
+            var that = this;
+            var iStart = oSettings._iDisplayStart;
+            var aData = [];
+
+            this.oApi._fnServerParams( oSettings, aData );
+            oSettings.fnServerData.call( oSettings.oInstance, oSettings.sAjaxSource, aData, function(json) {
+                /* Clear the old information from the table */
+                that.oApi._fnClearTable( oSettings );
+                /* Got the data - add it to the table */
+                var aData =  (oSettings.sAjaxDataProp !== "") ?
+                    that.oApi._fnGetObjectDataFn( oSettings.sAjaxDataProp )( json ) : json;
+
+                var dataLength = aData.length;
+                for ( var i=0 ; i<dataLength ; i++ )
+                {
+                    that.oApi._fnAddData( oSettings, aData[i] );
+                }
+                oSettings.aiDisplay = oSettings.aiDisplayMaster.slice();
+                that.fnDraw();
+                if ( bStandingRedraw === true )
+                {
+                    oSettings._iDisplayStart = iStart;
+                    that.oApi._fnCalculateEnd( oSettings );
+                    that.fnDraw( false );
+                }
+                that.oApi._fnProcessingDisplay( oSettings, false );
+                /* Callback user function - for event handlers etc */
+                if ( typeof fnCallback == 'function' && fnCallback !== null )
+                {
+                    fnCallback( oSettings );
+                }
+
+            }, oSettings );
+        };
+        
+        //need to get the grid
+        var grid = $('#grid');
+        var gridVal = grid.val();
+        draw_BTEC_unit_table(qualID, unitID, gridVal, courseID, columnsLocked, configColumnWidth, order, groupingID);
         
         var pageNumbers = $('.unitgridpage');
         pageNumbers.each(function(pageNumber){
@@ -1216,7 +1588,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
                 }
             }
             var grid = Y.one('#grid').get('value');
-            redraw_BTEC_unit_table(qualID, unitID, grid, checked, courseID, page);
+            redraw_BTEC_unit_table(qualID, unitID, grid, checked, courseID, page, order, groupingID);
             
             $(this).addClass('active');
             
@@ -1244,7 +1616,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
         {
             page = Y.one('#pageInput').get('value');
         }
-        redraw_BTEC_unit_table(qualID, unitID, 's', checked, courseID, page);
+        redraw_BTEC_unit_table(qualID, unitID, 's', checked, courseID, page, order, groupingID);
     });
     
     var editsimple = Y.one('#editsimple');
@@ -1257,7 +1629,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
         {
             page = Y.one('#pageInput').get('value');
         }
-        redraw_BTEC_unit_table(qualID, unitID, 'se', '', courseID, page);
+        redraw_BTEC_unit_table(qualID, unitID, 'se', '', courseID, page, order, groupingID);
     });
     
     var editadvanced = Y.one('#editadvanced');
@@ -1270,7 +1642,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
         {
             page = Y.one('#pageInput').get('value');
         }
-        redraw_BTEC_unit_table(qualID, unitID, 'ae', '', courseID, page);
+        redraw_BTEC_unit_table(qualID, unitID, 'ae', '', courseID, page, order, groupingID);
     });
     
     var viewadvanced = Y.one('#viewadvanced');
@@ -1283,7 +1655,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
         {
             page = Y.one('#pageInput').get('value');
         }
-        redraw_BTEC_unit_table(qualID, unitID, 'a', '', courseID, page);
+        redraw_BTEC_unit_table(qualID, unitID, 'a', '', courseID, page, order, groupingID);
     }); 
     
     var viewLate = Y.one('#showlate');
@@ -1301,8 +1673,29 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
             {
                 page = Y.one('#pageInput').get('value');
             }
-            redraw_BTEC_unit_table(qualID, unitID, 's', checked, courseID, page);
+            redraw_BTEC_unit_table(qualID, unitID, 's', checked, courseID, page, order, groupingID);
        });     
+    }
+    
+    var orderChange = $('#order');
+    if(orderChange)
+    {
+        orderChange.on('change',function(e){
+//            $(":input").attr("disabled",true);
+            var form = $('#unitGridForm');
+            if(form && form.attr('name') && form.attr('name') == 'unitGridForm')
+            {
+//                document.unitGridForm.submit();
+                $(form).submit();
+            }
+            else 
+            {
+//                document.unitGroupGridForm.submit();
+                var form = $('#unitGroupGridForm');
+                $(form).submit();
+            }
+            
+        });
     }
     
     // buttons
@@ -1323,7 +1716,7 @@ M.mod_bcgtbtec.initunitgrid = function(Y, qualID, unitID, columnsLocked, configC
     });
 }
 
-var draw_BTEC_unit_table = function(qualID, unitID, grid, courseID, columnsLocked, configColumnWidth) { 
+var draw_BTEC_unit_table = function(qualID, unitID, grid, courseID, columnsLocked, configColumnWidth, order, groupingID) { 
     var oTable = $('#BTECUnitGrid').dataTable( {
         "bProcessing": true,
         "bServerSide": true,
@@ -1336,7 +1729,7 @@ var draw_BTEC_unit_table = function(qualID, unitID, grid, courseID, columnsLocke
         "bSort":false,
         "bInfo":false,
         "bFilter":false,
-        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_unit_grid.php?qID="+qualID+"&uID="+unitID+"&g="+grid+"&cID="+courseID,
+        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_unit_grid.php?qID="+qualID+"&uID="+unitID+"&g="+grid+"&scID="+courseID+"&order="+order+"&grID="+groupingID,
         "fnDrawCallback": function () {
             if ( typeof oTable != 'undefined' ) {
                 applyUnitTT(true);
@@ -1352,8 +1745,66 @@ var draw_BTEC_unit_table = function(qualID, unitID, grid, courseID, columnsLocke
     
 }
 
+var draw_BTEC_act_table = function(qualID, grid, courseID, groupingID, columnsLocked, configColumnWidth, cmID) { 
+    var oTable = $('#BTECActGrid').dataTable( {
+        "bProcessing": true,
+        "bServerSide": true,
+//        "iDisplayStart": 0,
+//        "iDisplayLength": 15,
+        "sScrollX": "100%",
+        "sScrollY": "800px",
+        "bScrollCollapse": true,
+        "bPaginate": false,
+        "bSort":false,
+        "bInfo":false,
+        "bFilter":false,
+        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_act_grid.php?qID="+qualID+"&g="+grid+"&cID="+courseID+"&grID="+groupingID+"&cmID="+cmID,
+        "fnDrawCallback": function () {
+            if ( typeof oTable != 'undefined' ) {
+                applyActTT(true);
+                setTimeout("applyActTT(true);", 2000); 
+            }
+        }
+    } );
+    var fCol = new FixedColumns( oTable, {
+                    "iLeftColumns": columnsLocked,
+                    "iLeftWidth": configColumnWidth 
+                } );
+    //applyUnitTT();
+    
+}
 
-var draw_BTEC_student_table = function(qualID, studentID, grid) { 
+var draw_BTEC_class_table = function(qualID, grid, courseID, columnsLocked, configColumnWidth, groupID) { 
+    var oTable = $('#BTECClassGrid').dataTable( {
+        "bProcessing": true,
+        "bServerSide": true,
+//        "iDisplayStart": 0,
+//        "iDisplayLength": 15,
+        "sScrollX": "100%",
+        "sScrollY": "600px",
+        "bScrollCollapse": true,
+        "bPaginate": false,
+        "bSort":false,
+        "bInfo":false,
+        "bFilter":false,
+        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_class_grid.php?qID="+qualID+"&g="+grid+"&cID="+courseID+"&grID="+groupID,
+        "fnDrawCallback": function () {
+            if ( typeof oTable != 'undefined' ) {
+                applyClassTT(true);
+                setTimeout("applyTT(true);", 2000); 
+            }
+        }
+    } );
+    var fCol = new FixedColumns( oTable, {
+                    "iLeftColumns": columnsLocked,
+                    "iLeftWidth": configColumnWidth 
+                } );
+    //applyUnitTT();
+    
+}
+
+
+var draw_BTEC_student_table = function(qualID, studentID, grid, order) { 
     var oTable = $('#BTECStudentGrid').dataTable( {
         "bProcessing": true,
         "bServerSide": true,
@@ -1364,7 +1815,7 @@ var draw_BTEC_student_table = function(qualID, studentID, grid) {
         "bSort":false,
         "bInfo":false,
         "bFilter":false,
-        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID="+qualID+"&sID="+studentID+"&g="+grid,
+        "sAjaxSource": M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID="+qualID+"&sID="+studentID+"&g="+grid+"&order="+order,
         "fnDrawCallback": function () {
             if ( typeof oTable != 'undefined' ) {
                 applyStudentTT();
@@ -1381,7 +1832,7 @@ var draw_BTEC_student_table = function(qualID, studentID, grid) {
     
 }
 
-var redraw_BTEC_student_table = function(qualID, studentID, grid, flag) {
+var redraw_BTEC_student_table = function(qualID, studentID, grid, flag, order) {
     $(":input").attr("disabled",true);
     var lock = false;
     if(grid == 'se' || grid == 'ae')
@@ -1389,7 +1840,7 @@ var redraw_BTEC_student_table = function(qualID, studentID, grid, flag) {
         lock = true;
     }
     var oDataTable = $('#BTECStudentGrid').dataTable();
-    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID="+qualID+"&sID="+studentID+"&g="+grid+"&f="+flag+"&lock="+lock;
+    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID="+qualID+"&sID="+studentID+"&g="+grid+"&f="+flag+"&lock="+lock+"&order="+order;
     //var oSettings = oDataTable.fnSettings();
         oDataTable.fnReloadAjax(newUrl, recalculate_cols);
         //applyStudentTT();
@@ -1406,7 +1857,7 @@ var redraw_BTEC_student_table = function(qualID, studentID, grid, flag) {
             
 }
         
-var redraw_BTEC_unit_table = function(qualID, unitID, grid, flag, courseID, page) {
+var redraw_BTEC_unit_table = function(qualID, unitID, grid, flag, courseID, page, order, groupingID) {
     $(":input").attr("disabled",true);
     var lock = false;
     if(grid == 'se' || grid == 'ae')
@@ -1414,9 +1865,39 @@ var redraw_BTEC_unit_table = function(qualID, unitID, grid, flag, courseID, page
         lock = true;
     }
     var oDataTable = $('#BTECUnitGrid').dataTable();
-    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_unit_grid.php?qID="+qualID+"&uID="+unitID+"&g="+grid+"&f="+flag+"&cID="+courseID+"&page="+page+"&lock="+lock;
+    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_unit_grid.php?qID="+qualID+"&uID="+unitID+"&g="+grid+"&f="+flag+"&scID="+courseID+"&page="+page+"&lock="+lock+"&order="+order+"grID="+groupingID;
     //var oSettings = oDataTable.fnSettings();
     oDataTable.fnReloadAjax(newUrl, recalculate_cols_units);
+//    applyUnitTT(false);
+    //applyUnitTT();
+}
+
+var redraw_BTEC_act_table = function(qualID, grid, flag, courseID, page, groupingID, cmID) {
+    $(":input").attr("disabled",true);
+    var lock = false;
+    if(grid == 'se' || grid == 'ae')
+    {
+        lock = true;
+    }
+    var oDataTable = $('#BTECActGrid').dataTable();
+    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_act_grid.php?qID="+qualID+"&g="+grid+"&f="+flag+"&cID="+courseID+"&page="+page+"&lock="+lock+"&cmID="+cmID+"grID="+groupingID;
+    //var oSettings = oDataTable.fnSettings();
+    oDataTable.fnReloadAjax(newUrl, recalculate_cols_act);
+//    applyUnitTT(false);
+    //applyUnitTT();
+}
+
+var redraw_BTEC_class_table = function(qualID, grid, flag, courseID, page, groupID) {
+    $(":input").attr("disabled",true);
+    var lock = false;
+    if(grid == 'se' || grid == 'ae')
+    {
+        lock = true;
+    }
+    var oDataTable = $('#BTECClassGrid').dataTable();
+    var newUrl = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_class_grid.php?qID="+qualID+"&g="+grid+"&f="+flag+"&cID="+courseID+"&page="+page+"&lock="+lock+"&grID="+groupID;
+    //var oSettings = oDataTable.fnSettings();
+    oDataTable.fnReloadAjax(newUrl, recalculate_cols_class);
 //    applyUnitTT(false);
     //applyUnitTT();
 }
@@ -1445,6 +1926,23 @@ var recalculate_cols = function() {
     setTimeout("$(':input').attr('disabled',false);", 3000);
 }
 
+
+
+var recalculate_cols_act = function() {
+    $(":input").attr("disabled",true);
+    var oDataTable = $('#BTECActGrid').dataTable();
+    if(typeof oDataTable != 'undefined'  )
+    {
+        oDataTable.fnAdjustColumnSizing(false);
+        applyActTT();
+        setTimeout("applyActTT();", 2000);
+        setTimeout("applyActTT();", 3000);
+        setTimeout("applyActTT();", 4000);
+    }
+    setTimeout("$(':input').attr('disabled',false);", 2000);
+    setTimeout("$(':input').attr('disabled',false);", 3000);
+}
+
 var recalculate_cols_activity = function() {
     var dataTables = $('.activityQualGrid');
     dataTables.each(function(table){
@@ -1467,6 +1965,21 @@ var recalculate_cols_units = function() {
         setTimeout("applyUnitTT(true);", 2000);
         setTimeout("applyUnitTT(true);", 3000);
         setTimeout("applyUnitTT(true);", 4000);
+    }
+    setTimeout("$(':input').attr('disabled',false);", 2000);
+    setTimeout("$(':input').attr('disabled',false);", 3000);
+}
+
+var recalculate_cols_class = function() {
+    $(":input").attr("disabled",true);
+    var oDataTable = $('#BTECClassGrid').dataTable();
+    if(typeof oDataTable != 'undefined'  )
+    {
+        oDataTable.fnAdjustColumnSizing(false);
+        applyClassTT(true);
+        setTimeout("applyClassTT(true);", 2000);
+        setTimeout("applyClassTT(true);", 3000);
+        setTimeout("applyClassTT(true);", 4000);
     }
     setTimeout("$(':input').attr('disabled',false);", 2000);
     setTimeout("$(':input').attr('disabled',false);", 3000);
@@ -1579,11 +2092,35 @@ function update_student_grid(id, o){
     
 }
 
+function update_act_grid(id, o){
+    applyActTT(true);
+}
+
 function update_unit_grid(id, o){
     var data = o.responseText; // Response data.
     var json = Y.JSON.parse(o.responseText);
     //need to get the sid and the cid for this
     //so can renable the input. 
+    if(json.multiple && json.multiple === true)
+    {
+        var multiple = json.multipleArray;
+        multiple.forEach(function(single){
+            process_check_update(single);
+        });
+    }
+    else
+    {
+        process_check_update(json);
+    }
+    applyUnitTT(true);
+    //update the unit award
+    //update the qual award
+    //update the ticks
+    
+}
+
+function process_check_update(json)
+{
     var originalCriteriaID = json.originalcriteriaid;
     var studentID = json.studentid;
 //    $('#sID_'+studentID+'_cID_'+originalCriteriaID).attr("disabled", false);
@@ -1631,7 +2168,7 @@ function update_unit_grid(id, o){
         {
             $('#qualAward_'.studentID).text(""+json.qualaward.awardvalue+"");
         }
-    }
+    }    
     if(json.unitaward != null)
     {
         var uAward = Y.one('#uAw_'+studentID);
@@ -1655,11 +2192,6 @@ function update_unit_grid(id, o){
         }
         //then we need to change its selected value.
     }
-    applyUnitTT(true);
-    //update the unit award
-    //update the qual award
-    //update the ticks
-    
 }
 
 function applyActivityTT(qualID, activityID)
@@ -1899,13 +2431,88 @@ function applyStudentTT()
     applyTT();
 }
 
+function applyClassTT()
+{
+    var selects = Y.one('#selects').get('value');
+    var qualID;
+    if(selects == "yes")
+    {
+        if (Y.one("#qualChange") != null){
+            var index = Y.one("#qualChange").get('selectedIndex');
+            qualID = Y.one("#qualChange").get("options").item(index).getAttribute('value');
+        }        
+    }
+    else
+    {
+        qualID = Y.one('#qID').get('value');   
+    }
+    
+    var unitAward = Y.all('.unitAward');
+    if(unitAward)
+    {
+        unitAward.each(function(award){
+            award.detach();
+            award.on('change', function(e){
+                //get the id which will be the studentid
+                ////grey everything out first
+                
+                //id is in the formsID_11733_cID_3030
+//                award.attr("disabled", true);
+//                award.parents('td').css('background-color', 'red');
+                $(":input").attr("disabled",true);
+                var idString = award.get('id');
+                var studentID = idString.split('_')[1];
+                var unitID = idString.split('_')[3];
+                var user = Y.one('#user').get('value'); 
+                var index = award.get('selectedIndex');
+                var value = award.get("options").item(index).getAttribute('value');
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'uID' : unitID,
+                        'qID' : qualID, 
+                        'sID' : studentID, 
+                        'value' : value,
+                        'user' : user,
+                        'grid' : 'class'
+                    },
+                    
+                    on: {
+                        success: update_class_grid
+                    }
+                }
+                var url = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/update_student_unit_award.php";
+                var request = Y.io(url, data);
+            });
+        });
+    }
+}
+
+function update_class_grid(id, o){
+    var data = o.responseText; // Response data.
+//    alert(data);
+    var json = Y.JSON.parse(o.responseText);
+    //need to get the sid and the cid for this
+    //so can renable the input. 
+    var studentID = json.studentid;
+    $(":input").attr("disabled",false);
+    if(json.qualaward != null)
+    {
+        if($('#qualAward_'+studentID))
+        {
+            $('#qualAward_'+studentID).text(""+json.qualaward.awardvalue+"");
+        }
+    }
+}
+
 function applyUnitTT(enableInputs)
 {
     var selects = Y.one('#selects').get('value');
-    var qualID, unitID;
+    var qualID = -1, unitID = -1, cmID = -1;
     if(selects == "yes")
     {
-        
+        qualID = -1;
+        unitID = -1;
         if (Y.one("#qualChange") != null){
             var index = Y.one("#qualChange").get('selectedIndex');
             qualID = Y.one("#qualChange").get("options").item(index).getAttribute('value');
@@ -1916,11 +2523,26 @@ function applyUnitTT(enableInputs)
             unitID = Y.one("#unitChange").get("options").item(index2).getAttribute('value');
         }
         
+        if (Y.one("#activityChange") != null){
+            var index3 = Y.one("#activityChange").get('selectedIndex');
+            cmID = Y.one("#unitChange").get("options").item(index3).getAttribute('value');
+        }
+        
     }
     else
     {
-        unitID = Y.one('#uID').get('value');
-        qualID = Y.one('#qID').get('value');   
+        if(Y.one('#uID'))
+        {
+            unitID = Y.one('#uID').get('value');
+        }
+        if(Y.one('#qID'))
+        {
+            qualID = Y.one('#qID').get('value');
+        }
+        if(Y.one('#cmID'))
+        {
+            cmID = Y.one('#cmID').get('value');
+        }
     }
     
     var criteriaChecks = Y.all('.criteriaCheck');
@@ -1938,6 +2560,11 @@ function applyUnitTT(enableInputs)
 //                check.attr("disabled", true);
 //                check.parents('td').css('background-color', 'red');
                 $(":input").attr("disabled",true);
+                if(qualID == -1)
+                {
+                    //then get it from the select
+                    qualID = check.getAttribute('qual');
+                }
                 //id comes down as sID_27272_cID_21231
                 var idString = check.get('id');
                 var criteriaID = idString.split('_')[3];
@@ -1982,6 +2609,11 @@ function applyUnitTT(enableInputs)
 //                award.attr("disabled", true);
 //                award.parents('td').css('background-color', 'red');
                 $(":input").attr("disabled",true);
+                if(qualID == -1)
+                {
+                    //then get it from the select
+                    qualID = award.getAttribute('qual');
+                }
                 var idString = award.get('id');
                 var studentID = idString.split('_')[1];
                 var user = Y.one('#user').get('value'); 
@@ -2019,6 +2651,11 @@ function applyUnitTT(enableInputs)
 //                select.attr("disabled", true);
 //                select.parents('td').css('background-color', 'red');
                 $(":input").attr("disabled",true);
+                if(qualID == -1)
+                {
+                    //then get it from the select
+                    qualID = select.getAttribute('qual');
+                }
                 var idString = select.get('id');
                 var criteriaID = idString.split('_')[3];
                 var studentID = idString.split('_')[1];
@@ -2053,6 +2690,120 @@ function applyUnitTT(enableInputs)
 //    {
 //        $(":input").attr("disabled",true);
 //    }
+$(":input").attr("disabled",false);
+    applyTT();
+}
+
+function applyActTT(enableInputs)
+{
+    var selects = Y.one('#selects').get('value');
+    var cmID = -1;
+    if(selects == "yes")
+    {
+        
+        if (Y.one("#activityChange") != null){
+            var index3 = Y.one("#activityChange").get('selectedIndex');
+            cmID = Y.one("#activityChange").get("options").item(index3).getAttribute('value');
+        }
+        
+    }
+    else
+    {
+        if(Y.one('#cmID'))
+        {
+            cmID = Y.one('#cmID').get('value');
+        }
+    }
+    
+    var criteriaChecks = Y.all('.criteriaCheck');
+    if(criteriaChecks)
+    {
+        criteriaChecks.each(function(check){
+            check.detach();
+            check.on('click', function(e){
+                //send the ajax request
+                ////grey everything out first
+                
+                
+                //only grey out this one OR change its colour????
+                //id is in the formsID_11733_cID_3030
+//                check.attr("disabled", true);
+//                check.parents('td').css('background-color', 'red');
+                $(":input").attr("disabled",true);
+                //id comes down as sID_27272_cID_21231
+                var idString = check.get('id');
+                var unitID = idString.split('_')[3];
+                var criteriaID = idString.split('_')[1];
+                var checked = check.get('checked');
+                var user = Y.one('#user').get('value');
+                var qualID = check.getAttribute('qual');
+                var studentID = check.getAttribute('student');
+                //todo:
+                //get the criteria id, who updated it and if its checked or not checked. 
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'qID' : qualID, 
+                        'sID' : studentID, 
+                        'cID' : criteriaID,
+                        'value' : checked, 
+                        'vtype' : 'check', 
+                        'uservalue' : '-1',
+                        'user' : user,
+                        'uID' : unitID,
+                        'grid' : 'act'
+                    },
+                    on: {
+                        success: update_act_grid
+                    }
+                }
+                var url = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/update_student_value.php";
+                var request = Y.io(url, data);
+          });  
+        })
+    }
+    
+    var criteriaSelect = Y.all('.criteriaValueSelect');
+    if(criteriaSelect)
+    {
+        criteriaSelect.each(function(select){
+            select.detach();
+            select.on('change', function(e){
+                //get the id which will be the criteriaid
+                ////grey everything out first
+                //id is in the formsID_11733_cID_3030
+//                select.attr("disabled", true);
+//                select.parents('td').css('background-color', 'red');
+                $(":input").attr("disabled",true);
+                var idString = select.get('id');
+                var unitID = idString.split('_')[3];
+                var criteriaID = idString.split('_')[1];
+                var user = Y.one('#user').get('value'); 
+                var index = select.get('selectedIndex');
+                var value = select.get("options").item(index).getAttribute('value');
+                var qualID = select.getAttribute('qual');
+                var studentID = select.getAttribute('student');
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'qID' : qualID, 
+                        'sID' : studentID, 
+                        'uID' : unitID,
+                        'cID' : criteriaID,
+                        'value' : value,
+                        'user' : user,
+                        'grid' : 'act'
+                    },
+                    on: {
+                        success: update_act_grid
+                    }
+                }
+                var url = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/update_student_value.php";
+                var request = Y.io(url, data);
+            });
+        });
+    }
+$(":input").attr("disabled",false);
     applyTT();
 }
 
@@ -2376,7 +3127,6 @@ function applyTT()
             var params = {action: 'unitComment', params: {element: cellID, studentID: studentID, qualID: qualID, unitID: unitID, grid: grid, comment: comments} };
         }
         
-        
         $.post( M.cfg.wwwroot+'/blocks/bcgt/plugins/bcgtbtec/ajax/update_student_comments.php', params, function(data){
             eval(data);
         });
@@ -2676,3 +3426,224 @@ M.mod_bcgtbtec.btecaddactivity = function(Y) {
         Y.one('#addActivity').submit();
     } ); 
 }
+
+M.mod_bcgtbtec.btecmodactivity = function(Y) {
+    //on change of uID
+    var unitAdd = $('#bcgtAddUnit');
+    if(unitAdd)
+    {
+           unitAdd.on("click", function(e){
+                e.preventDefault();
+                //go and load up the new unit selection. 
+                //need the unitid
+                //the courseid
+                //coursemoduleid
+                var courseID = unitAdd.attr('course');
+                var courseModuleID = unitAdd.attr('cmid');
+                var unitID = $('#nUID').find(":selected").val();
+                var span = $('#bcgtloading');
+                if(span)
+                {
+                    span.html('<img src="'+M.cfg.wwwroot+'/blocks/bcgt/pix/ajax-loader.gif" alt="" />');
+                }
+                var data = {
+                      method: 'POST',
+                      data: {
+                          'cID' : courseID, 
+                          'uID' : unitID, 
+                          'cmID' : courseModuleID
+                      },
+                      on: {
+                          success: update_mod_page
+                      }
+                  }
+                  var url = M.cfg.wwwroot+"/blocks/bcgt/plugins/bcgtbtec/ajax/get_mod_selection.php";
+                  var request = Y.io(url, data);
+           }); 
+    }
+    
+    apply_mod_tt();
+}
+
+function update_mod_page(id, o)
+{
+    var data = o.responseText; // Response data.
+    var json = Y.JSON.parse(o.responseText);
+    if(json.retval != null)
+    {
+        var div = $('#bcgtMODAddUnitSelection');
+        if(div)
+        {
+            div.append(json.retval);
+        }
+        var unitID = json.unit;
+        //set selected index to blank.
+        $("select#nUID").prop('selectedIndex', 0);
+        //need to disable the option in the drop down. 
+        $("select#nUID option[value='"+ unitID + "']").attr('disabled', true ); 
+        //need to add the id to the hidden list of units we have selected.
+        var unitsSelected = $('#bcgtunitsselected').val() + "_" + unitID;
+        $('#bcgtunitsselected').val(unitsSelected)
+    }
+    var span = $('#bcgtloading');
+    if(span)
+    {
+        span.html('');
+    }
+    apply_mod_tt();
+}
+
+function apply_mod_tt()
+{
+    //need to listen for deletes etc. 
+    var remUnits = $('.remUnit');
+    if(remUnits)
+    {
+        $(remUnits).each(function(index){
+            $(this).on('click', function(e){
+                e.preventDefault();
+                var unitID = $(this).attr('unit');
+                var div = $('#bcgtunitMod_'+unitID);
+                if(div)
+                {
+                    $(div).remove();
+                }
+                
+                //also need to add back to drop down.
+                //no lets re-enable it. 
+                $("select#nUID option[value='"+ unitID + "']").attr('disabled', false); 
+                
+                //need to remove the id from the hidden list of units we have selected.
+                var unitsSelected = $('#bcgtunitsselected').val();
+                unitsSelected.replace("_"+unitID,"");
+                $('#bcgtunitsselected').val(unitsSelected);
+            });
+        });   
+    }
+}
+
+M.mod_bcgtbtec.initactivitiescheck = function(Y) {
+    $(document).ready(function() {
+	var $dialogBoxContent = $('<div id="dialogBoxContent"></div>')
+		.dialog({
+			autoOpen: false,
+			title: 'Gradebook Details',
+            modal: true,
+            dialogClass: 'bcgtdialogmodcheck'    
+		});
+
+	$('.criteriamod').on('click', function(e) {
+        //reset the html to the loading symbol. 
+        $dialogBoxContent.html('<img class="modalload" src="'+M.cfg.wwwroot+'/blocks/bcgt/pix/ajax-loader.gif" alt="" />');
+		$dialogBoxContent.dialog('open');
+		// prevent the default action, e.g., following a link
+		e.preventDefault();
+        var courseID = $(this).attr('course');
+        var unitID = -1;
+        var criteriaID = $(this).attr('crit');
+        var qualID = $(this).attr('qual');
+        var modType = $(this).attr('mod');
+        var userID = -1;
+        var cmID = -1;
+        //this will now go and get the data based onn the attributes through ajax.
+        var data = {
+            method: 'POST',
+            data: {
+                'cID' : courseID, 
+                'uID' : unitID, 
+                'cmID' : cmID,
+                'sID' : userID,
+                'mod' : modType,
+                'qID' : qualID,
+                'criteriaID' : criteriaID
+            },
+            on: {
+                success: display_modal
+            }
+        }
+//        alert(JSON.stringify(data));
+        var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_mod_details.php";
+        var request = Y.io(url, data);
+        
+	});
+});
+
+    //listen for the red x on click:
+    var noCriterias = $('.bcgtcritnoass');
+    if(noCriterias)
+    {
+        noCriterias.on('click', function(e){
+           var courseID = $(this).attr('course');
+           var unitID = $(this).attr('uID');
+           var familyID = $(this).attr('fID');
+           
+           //go to add activity
+           var link = M.cfg.wwwroot+'/blocks/bcgt/forms/add_activity.php?'+
+                        'page=addact&uID='+unitID+'&cID='+courseID+
+                        '&fID='+familyID+'';
+           window.location.href = link;
+        });
+    }
+}
+
+function display_modal(id, o)
+{
+    var data = o.responseText; // Response data.
+    var json = Y.JSON.parse(o.responseText);
+    var div = $('#dialogBoxContent');
+    if(div)
+    {
+        div.html('');    
+    }
+    if(json.retval != null && div)
+    { 
+        div.html(json.retval); 
+    }
+    apply_mod_link_TT();
+}
+
+function apply_mod_link_TT()
+{
+    //listen out for the modal button clicks. 
+    
+    //close the diaplog
+    
+    //go to the corect destination
+    
+    //activity tracker
+    //or activity
+    
+    var actTracking = $('input.acttracking');
+    if(actTracking)
+    {
+        actTracking.on('click', function(e){
+        e.preventDefault();
+           var courseID = $(this).attr('course');
+           var qualID = $(this).attr('qID');
+           var cmID = $(this).attr('cmID');
+           var groupingID = $(this).attr('grID');
+           
+           //go to activity grid. 
+           var link = M.cfg.wwwroot+'/blocks/bcgt/grids/act_grid.php?cID='+
+                        courseID+'&cmID='+cmID+'&grID='+groupingID+'&qID='+qualID;
+           window.location.href = link;
+        });
+    }
+    
+    var act = $('input.act');
+    if(act)
+    {
+        act.on('click', function(e){
+            e.preventDefault();
+           var cmID = $(this).attr('cmid');
+           var mod = $(this).attr('mod');
+           //go to add activity
+           //go to add activity
+           var link = M.cfg.wwwroot+'/mod/'+mod+'/view.php?'+
+                        'id='+cmID+'';
+           window.location.href = link;
+        });
+    }
+}
+
+

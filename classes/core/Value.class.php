@@ -140,6 +140,11 @@ class Value{
     {
         return $this->ranking;
     }
+    
+    public function is_enabled()
+    {
+        return $this->enabled;
+    }
         
     public function is_criteria_met_bool()
     {
@@ -216,11 +221,12 @@ class Value{
 		}
 		return false;
 	}
-    
+        
     public function create_default_object($shortValue, $bcgtTypeID)
     {
         global $DB;
-        $sql = "SELECT * FROM {block_bcgt_value} value 
+        $sql = "SELECT value.*, settings.coreimg, settings.customimg, settings.coreimglate, settings.customimglate
+            FROM {block_bcgt_value} value 
             JOIN {block_bcgt_value_settings} settings ON settings.bcgtvalueid = value.id 
             WHERE value.shortvalue = ? AND value.bcgttypeid = ?";
         $details = $DB->get_record_sql($sql, array($shortValue, $bcgtTypeID));
@@ -237,6 +243,7 @@ class Value{
             $this->coreImgLate = $details->coreimglate;
             $this->customImgLate = $details->customimglate;
             $this->specialVal = $details->specialval;
+            $this->enabled = $details->enabled;
         }
     }
     

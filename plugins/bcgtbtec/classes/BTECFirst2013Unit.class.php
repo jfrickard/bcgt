@@ -10,8 +10,11 @@
  *
  * @author mchaney
  */
-require_once('BTECUnit.class.php');
-require_once('BTECFirst2013Qualification.class.php');
+
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Qualification.class.php');
 class BTECFirst2013Unit extends BTECUnit {
     //put your code here
     

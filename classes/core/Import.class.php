@@ -24,7 +24,7 @@ class Import {
     protected $systemData;
     protected $errorMessage;
     protected $backup;
-    
+    protected $group;
     //I AM FULLY AWARE THAT HAVING THESE SWITCHES IN IT IS NOT FULLY OBJECT ORIENTED!!
 //THEY SHOULD BE inherited instancs of classes. in a workspace or something
     
@@ -34,6 +34,28 @@ class Import {
         $this->file = $file;
         
         $this->load_import_obj();
+    }
+    
+    public function check_capability($cID = -1)
+    {
+        global $COURSE;
+        if($cID != -1)
+        {
+            $context = context_course::instance($cID);
+        }
+        else
+        {
+            $context = context_course::instance($COURSE->id);
+        }
+        switch($this->action)
+        {
+            //qualsOnEntry
+            case 'pl':
+                require_capability('block/bcgt:importpriorlearning', $context);
+                break;
+            default:
+                break;
+        }
     }
     
     public function get_message()
@@ -104,8 +126,8 @@ class Import {
                 if($header[$headerCount] != $h)
                 {
                     $this->errorMessage = get_string('csvheadersdontmatch','block_bcgt');
-                    $this->errorMessage.= '<br />'.implode(',',$arrayHeaders);
-                    $this->errorMessage.= '<br />'.implode(',',$header);
+                    $this->errorMessage.= '<br />'.get_string('expected', 'block_bcgt').implode(',',$arrayHeaders);
+                    $this->errorMessage.= '<br />'.get_string('found', 'block_bcgt').implode(',',$header);
                     return false;
                 }
                 $headerCount++;
@@ -162,12 +184,19 @@ class Import {
             case 'ud':
                 $obj = new UserDataImport();
                 $this->userData = $obj;
+                break;
             case 'sd':
                 $obj = new SystemDataImport();
                 $this->systemData = $obj;
+                break;
             case 'b':
                 $obj = new BackupImport();
                 $this->backup = $obj;
+                break;
+            case 'gr':
+                $obj = new Group();
+                $this->group = $obj;
+                break;
         }
     }
     
@@ -202,6 +231,9 @@ class Import {
             //backup
             case 'b':
                 return $this->backup;
+                break;
+            case 'gr':
+                return $this->group;
                 break;
         }
     }
@@ -247,15 +279,23 @@ class Import {
             case 'fam':
                 return html_writer::tag('h2', get_string('assessmentmarks', 'block_bcgt'). 
                         '', array('class'=>'formheading'));
+                break;
             case 'ud':
                 return html_writer::tag('h2', get_string('userdata', 'block_bcgt'). 
                         '', array('class'=>'formheading'));
+                break;
             case 'sd':
                 return html_writer::tag('h2', get_string('systemdata', 'block_bcgt'). 
                         '', array('class'=>'formheading'));
+                break;
             case 'b':
                 return html_writer::tag('h2', get_string('backup', 'block_bcgt'). 
                         '', array('class'=>'formheading'));
+                break;
+            case 'gr':
+                return html_writer::tag('h2', get_string('groups'). 
+                        '', array('class'=>'formheading'));
+                break;
         }
         
     }
@@ -279,21 +319,20 @@ class Import {
         //needs to check available capibilities
         $out = '<div class="tabs"><div class="tabtree">';
         $out .= '<ul class="tabrow0">';
-        $out .= '<li>'.
-                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=pl">'.
-                '<span>'.get_string('priorlearning', 'block_bcgt').'</span></a></li>';
-        $out .= '<li>'.
-                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=tg">'.
-                '<span>'.get_string('targetgrades', 'block_bcgt').'</span></a></li>';
-        $out .= '<li>'.
-                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=w">'.
-                '<span>'.get_string('qualweightings', 'block_bcgt').'</span></a></li>';
-        $out .= '<li>'.
-                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=fam">'.
-                '<span>'.get_string('assessmentmarks', 'block_bcgt').'</span></a></li>';
-        $out .= '<li>'.
-                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=ud">'.
-                '<span>'.get_string('userdata', 'block_bcgt').'</span></a></li>';
+        $focus = '';
+        if($this->action == 'pl')
+        {
+            $focus='focus';
+        }
+        $out .= $this->get_ind_tab($this->action, 'priorlearning', 'pl');
+        $out .= $this->get_ind_tab($this->action, 'targetgrades', 'tg');
+        $out .= $this->get_ind_tab($this->action, 'qualweightings', 'w');
+        $out .= $this->get_ind_tab($this->action, 'assessmentmarks', 'fam');
+        $out .= $this->get_ind_tab($this->action, 'userdata', 'ud');
+        if(get_config('bcgt', 'usegroupsingradetracker'))
+        {
+            $out .= $this->get_ind_tab($this->action, 'groupsgroupings', 'gr');
+        }
 //        $out .= '<li>'.
 //                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a=sd">'.
 //                '<span>'.get_string('systemdata', 'block_bcgt').'</span></a></li>';
@@ -306,10 +345,24 @@ class Import {
         return $out;
     }
     
+    protected function get_ind_tab($currentAction, $name, $action)
+    {
+        global $CFG;
+        $focus = '';
+        if($currentAction == $action)
+        {
+            $focus = 'focus';
+        }
+        return '<li class="'.$focus.'">'.
+                '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/import.php?a='.$action.'">'.
+                '<span>'.get_string($name, 'block_bcgt').'</span></a></li>';;
+    }
+    
     public function get_description()
     {
         $retval = '';        
         $obj = $this->get_object();
+        
         $desc = $obj->get_description();
         $multipleFiles = $obj->has_multiple();
         $headers = $obj->get_headers();

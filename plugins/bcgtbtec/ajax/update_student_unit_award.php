@@ -209,20 +209,24 @@ elseif($grid == 'unit')
     {
         $unitObject = $sessionUnits[$unitID];
         $unit = $unitObject->unit;
-        $qualArray = $unitObject->qualArray;
-        if(array_key_exists($qualID, $qualArray))
+        $qualArray = array();
+        if(isset($unitObject->qualArray))
         {
-            $studentArray = $qualArray[$qualID];
-            if(array_key_exists($studentID, $studentArray))
+            $qualArray = $unitObject->qualArray;
+            if(array_key_exists($qualID, $qualArray))
             {
-                $studentObject = $studentArray[$studentID];
-                $studentUnit = $studentObject->unit;
-                if($studentUnit)
+                $studentArray = $qualArray[$qualID];
+                if(array_key_exists($studentID, $studentArray))
                 {
-                    $studentUnitFound = true;
+                    $studentObject = $studentArray[$studentID];
+                    $studentUnit = $studentObject->unit;
+                    if($studentUnit)
+                    {
+                        $studentUnitFound = true;
+                    }
                 }
-            }
-        } 
+            }  
+        }
     }
     //will be used later
     $loadParams = new stdClass();
@@ -337,7 +341,11 @@ elseif($grid == 'unit')
         {
             $unitObject = $sessionUnits[$unitID];
             $unit = $unitObject->unit;
-            $qualArray = $unitObject->qualArray;
+            $qualArray = array();
+            if(isset($unitObject->qualArray))
+            {
+                $qualArray = $unitObject->qualArray;
+            }
         }
         else
         {
@@ -375,6 +383,91 @@ elseif($grid == 'unit')
     else
     {
         echo json_encode("No Qualification Loaded");
+    }
+}
+elseif($grid == 'class')
+{
+    $valueID = $value;
+    global $CFG;
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECQualification.class.php');
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
+    $sessionQuals = isset($_SESSION['session_class_quals'])? 
+        unserialize(urldecode($_SESSION['session_class_quals'])) : array();
+    //get the qual from the session:
+    //this will be an array of qualID => qual
+    //does the qual exist already for this session?
+    if(array_key_exists($qualID, $sessionQuals))
+    {
+        $qualification = $sessionQuals[$qualID];
+    }
+    else
+    {
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELALL;
+        $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
+    }
+    
+    //we need to load the entire qualification up (including criteria) so that the criteria
+    //get checked in the grid. 
+    
+    if($qualification)
+    {
+        $loadParams = new stdClass();
+        //neess to be all so it will tick the criterias
+        $loadParams->loadLevel = Qualification::LOADLEVELALL;
+        $loadParams->loadAward = true;
+//        $qualification->load_users('student', false, null, $courseID, $groupID);
+        $qualification->load_student_information($studentID, $loadParams);
+    }    
+    $retval = new stdClass();
+    if($qualification)
+    {
+        $unit = $qualification->get_single_unit($unitID);
+        if($unit)
+        {
+            $award = Award::get_award_id($valueID);
+            $obj = $unit->set_award_criteria($award, $qualID);
+            $retval->unitid = $unitID;
+            $unit->save_student($qualID);
+            $qualAward = null;
+            if($qualification->has_final_grade())
+            {
+                $qualAward = $qualification->calculate_predicted_grade();
+            }
+            //qualAward is an object of
+            //minAward
+            //maxAward
+            //avgAward
+
+            $retval->studentid = $studentID;
+            $retval->qualid = $qualID;
+            $qualAwardID = -1;
+            $qualAwardValue = "N/A";
+            if($qualAward)
+            {
+                if(isset($qualAward->averageAward))
+                {
+                    $qualAwardID = $qualAward->averageAward->get_id();
+                    $qualAwardValue = $qualAward->averageAward->get_award();
+                    $qualAwardType = $qualAward->averageAward->get_type();
+                }
+            }
+
+            $qualAwardType = 'Predicted';
+
+            $jsonQualAward = new stdClass();
+            $jsonQualAward->awardid = $qualAwardID;
+            $jsonQualAward->awardvalue = $qualAwardValue;
+            $jsonQualAward->awardtype = $qualAwardType;
+
+            $retval->qualaward = $jsonQualAward;
+            $retval->time = date('H:i:s');
+            
+            $sessionQuals[$qualID] = $qualification;
+            $_SESSION['session_class_quals'] = urlencode(serialize($sessionQuals));
+            
+            echo json_encode( $retval );
+        }
     }
 }
 

@@ -9,6 +9,7 @@
  */
 global $CFG;
 require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECQualification.class.php');
 //include_once('BTECQualification.class.php');
 class BTECFoundationQualification extends BTECQualification {
 	

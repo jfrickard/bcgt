@@ -15,9 +15,11 @@ require_once('../../../config.php');
 require_once('../lib.php');
 require_once($CFG->dirroot.'/user/profile/lib.php');
 $courseID = optional_param('cID', -1, PARAM_INT);
+$edit = optional_param('edit', false, PARAM_BOOL);
+$groupingID = optional_param('grID', -1, PARAM_INT);
 $editing = false;
 $save = false;
-if(isset($_POST['edit']))
+if(isset($_POST['edit']) || $edit)
 {
     $editing = true;
 }
@@ -70,6 +72,8 @@ $out = $OUTPUT->header();
     $out .= '<form id="assGridClassForm" method="POST" name="assGridClassForm" action="ass_grid_class.php?">';			
     $out .= '<input type="hidden" name="cID" value="'.$courseID.'"/>';
     $out .= '<input type="hidden" name="qID" value="'.$qualID.'"/>';
+    $out .= '<input type="hidden" name="grID" value="'.$groupingID.'"/>';
+    
     $out .= html_writer::tag('h2', $longName, 
         array('class'=>'formheading'));
     
@@ -93,7 +97,7 @@ $out = $OUTPUT->header();
         }
         $out .="</div><br clear='all'><br />";
     }
-    $out .= $qualification->display_qual_assessments($editing, $save, -1, 'q');
+    $out .= $qualification->display_qual_assessments($editing, $save, -1, 'q', $groupingID);
     $out .= html_writer::end_tag('div');
     $out .= '</form>';
     

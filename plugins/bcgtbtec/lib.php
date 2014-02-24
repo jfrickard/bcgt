@@ -17,7 +17,10 @@
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerQualification.class.php');  
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFoundationQualification.class.php');  
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECHigherCriteria.class.php');    
-    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerCriteria.class.php');  
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerCriteria.class.php'); 
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFoundationUnit.class.php');
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECHigherUnit.class.php');
+    require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerUnit.class.php');
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFoundationCriteria.class.php');
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Qualification.class.php');
     require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Unit.class.php');
@@ -757,6 +760,9 @@
         require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECHigherCriteria.class.php');
         require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerCriteria.class.php');
         require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFoundationCriteria.class.php');
+        require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Qualification.class.php');
+        require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Unit.class.php');
+        require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECFirst2013Criteria.class.php');
     }
     
     function insert_new_user($user)
@@ -788,11 +794,23 @@
         return $DB->insert_record('user', $record);
     }
     
-    function get_btec_unit_activity_table($activityID, $unit, $courseID, $new = false)
+    function get_btec_unit_activity_table($activityID, $unit, $courseID, 
+            $new = false, $activity = null, $modLinking = null, $modIcons = null)
     {
+        if(!$modLinking)
+        {
+            $modLinking = load_bcgt_mod_linking();
+        }
+        if(!$modIcons)
+        {
+            $modIcons = load_mod_icons($courseID, -1, -1, -1);
+        }
         global $CFG;
         $retval = '';
-        $activity = bcgt_get_module_from_course_mod($activityID);
+        if(!$activity)
+        {
+            $activity = bcgt_get_activity_mod_details($activityID);
+        }
         if($activity)
         {
             if(!$new)
@@ -800,8 +818,33 @@
                 //then get the criteria details for this unit/activity
                 $qualsOnActivity = get_activity_quals($activityID, $unit->get_id());
                 $criteriaOnActivity = get_activity_criteria($activityID, $qualsOnActivity);
+            }    
+            if(!isset($activity->dueDate))
+            {
+                $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
             }
-            $retval .= '<h3>'.$activity->name.'</h3>';
+            else
+            {
+                $dueDate = $activity->dueDate;
+            }
+            $retval .= '<h3>';
+            $retval .= '<span class="activityIcon">';
+            if(array_key_exists($activity->module,$modIcons))
+            {
+                $icon = $modIcons[$activity->module];
+                //show the icon. 
+                $retval .= html_writer::empty_tag('img', array('src' => $icon,
+                            'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+            }
+            $retval .= '</span>';
+            $retval .= '<span class="activityName">'.$activity->name.'</span>';
+            $retval .= '<span class="activityDueDate">';
+            if($dueDate)
+            {
+                $retval .= date('d M Y : H:m', $dueDate); 
+            }
+            $retval .= '</span>';
+            $retval .= '</h3>';
             if($unit)
             {
                 $qualsUnitOn = $unit->get_quals_on('', -1, -1, $courseID );
@@ -852,7 +895,7 @@
                         }
                         $retval .= '<td><input '.$checked.' type="checkbox" name="a_'.$activityID.'_c_'.$criteria->get_id().'"/></td>';
                     }
-                    $retval .= '<td>Delete : <input type="checkbox" name="rem_'.$activityID.'"/></td>';
+                    $retval .= '<td class="deleteselection">'.get_string('delete', 'block_bcgt').' : <input type="checkbox" name="rem_'.$activityID.'"/></td>';
                     $retval .= '</tr>';
                     $retval .= '</table>';
                 }
@@ -860,7 +903,18 @@
         }
         return $retval;
     }
-    function get_btec_activity_unit_table($activityID, $unitID, $courseID, $new = false)
+    
+    /**
+     * 
+     * @global type $CFG
+     * @param type $activityID
+     * @param type $unitID
+     * @param type $courseID
+     * @param type $new
+     * @param type $modDirect
+     * @return string
+     */
+    function get_btec_activity_unit_table($activityID, $unitID, $courseID, $new = false, $modDirect = false)
     {
         global $CFG;
         $retval = '';
@@ -869,6 +923,7 @@
         $unit = Unit::get_unit_class_id($unitID, $loadParams);
         if($unit)
         {
+            $retval .= '<div class="bcgtunitmod" id="bcgtunitMod_'.$unit->get_id().'">';
             $retval .= '<h3>'.$unit->get_name().'</h3>';
             if(!$new)
             {
@@ -925,14 +980,30 @@
                     }                    
                     $retval .= '<td><input '.$checked.' type="checkbox" name="u_'.$unitID.'_c_'.$criteria->get_id().'"/></td>';
                 }
-                $retval .= '<td>Delete : <input type="checkbox" name="remU_'.$unitID.'"/></td>';
+                if($modDirect)
+                {
+                    $retval .= '<td><input type="submit" name="remU_'.$unitID.
+                            '" class="remUnit" unit="'.$unitID.'" value="'.
+                            get_string('delete', 'block_bcgt').'"/></td>';
+                }
+                else
+                {
+                    $retval .= '<td>'.get_string('delete', 'block_bcgt').' : <input type="checkbox" name="remU_'.$unitID.'"/></td>';
+                }
                 $retval .= '</tr>';
                 $retval .= '</table>';
             }
+            $retval .= '</div>';
         }
         return $retval;
     }
     
+    /**
+     * This shows what activities have units etc
+     * @global type $CFG
+     * @param type $courseID
+     * @return string
+     */
     function btec_activity_by_activity_page($courseID)
     {
         //get all of the activities on this course
@@ -948,61 +1019,81 @@
         {
             $retval .= '<h2>'.bcgt_get_qualification_display_name(end($quals)).'</h2>';
         }
-        $activities = get_coursemodules_in_course('assign', $courseID, 'm.duedate');
+        $activities = bcgt_get_coursemodules_in_course($courseID);
+        $modLinking = load_bcgt_mod_linking();
+        //load the icons
+        $modIcons = load_mod_icons($courseID);
         if($activities)
         {
             $manage = has_capability('block/bcgt:manageactivitylinks', $context);
             $link = $CFG->wwwroot.'/blocks/bcgt/forms/add_activity.php?page=addunit&';
             $img = $CFG->wwwroot.'/blocks/bcgt/pix/greenPlus.png';
+            $retval .= '<div class="bcgtmodlinkingselections">';
             $retval .= '<table class="activityLinks">';
-            $retval .= '<thead><th></th><th>'.get_string('activity', 'block_bcgt').
-                    '</th><th>'.get_string('units', 'block_bcgt').'</th></thead>'; 
+            $retval .= '<thead><th></th><th></th><th>'.get_string('activity', 'block_bcgt').
+                    '</th><th>'.get_string('duedate','block_bcgt').'</th><th>'.
+                    get_string('units', 'block_bcgt').'</th></thead>'; 
             $retval .= '<body>';
-                foreach($activities AS $activity)
+            foreach($activities AS $activity)
+            {
+                $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, 
+                        $activity->cmodule, $modLinking);
+                $out = '<tr>';
+                $out .= '<td>';
+                if($manage)
                 {
-                    $activityDetails = bcgt_get_module_from_course_mod($activity->id);
-                    $retval .= '<tr>';
-                    $retval .= '<td>';
-                    if($manage)
-                    {
-                        $retval .= '<a href="'.$link.'aID='.$activity->id.'&cID='.$courseID
-                            .'&fID='.BTECQualification::FAMILYID.'"><img src="'.$img.'"/></a>';
-                    }
-                    $retval .= '</td>';
-                    $retval .= '<td>'.$activityDetails->name.'</td>';
-                    //now get the units that are on it. 
-                    $retval .= '<td>';
-                    $activityUnits = get_activity_units($activity->id);
-                    if($activityUnits)
-                    {
-                        $retval .= '<table class="activityLinksAssignmentGroup">';
-                        foreach($activityUnits AS $activityUnit)
-                        {
-                            $retval .= '<tr>';
-                            $retval .= '<td>';
-                            $activityCriterias = get_activity_units_criteria($activity->id, $activityUnit->id);
-                            $retval .= '<table class="activityLinksActivities">';
-                            $retval .= '<tr><th colspan="'.count($activityCriterias).'">'.$activityUnit->name.'</th></tr>';
-                            $retval .= '<tr>';
-                            foreach($activityCriterias AS $activityCriteria)
-                            {
-                                $retval .= '<td>'.$activityCriteria->name.'</td>';
-                            }
-                            $retval .= '</tr>';
-                            $retval .= '</table>';
-                            $retval .= '</td>';
-                            $retval .= '</tr>';
-                        }
-                        $retval .= '</table>';
-                    }
-                    $retval .= '</td>';
+                    $out .= '<a href="'.$link.'aID='.$activity->id.'&cID='.$courseID
+                        .'&fID='.BTECQualification::FAMILYID.'"><img src="'.$img.'"/></a>';
                 }
+                $out .= '</td>';
+                //the icon
+                $out .= '<td>';
+                if(array_key_exists($activity->module,$modIcons))
+                {
+                    $icon = $modIcons[$activity->module];
+                    //show the icon. 
+                    $out .= html_writer::empty_tag('img', array('src' => $icon,
+                                'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                }
+                $out .= '</td>';
+                $out .= '<td>'.$activity->name.' ('.$activity->module.')</td>';
+                //due date
+                $out .= '<td>';
+                if($dueDate)
+                {
+                    $out .= date('d M Y : H:m', $dueDate); 
+                }
+                $out .= '</td>';
+                //now get the units that are on it. 
+                $out .= '<td class="bcgtmodlinkingunitsummary">';
+                $out .= get_mod_unit_summary_table($activity->id);
+                $out .= '</td>';
+                $activity->out = $out;
+                $activity->dueDate = $dueDate;
+            }
+            
+            require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+                $modSorter = new ModSorter();
+                usort($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+            
+            foreach($activities AS $activity)
+            {
+                $retval .= $activity->out;
+            }
             $retval .= '</body>';
             $retval .= '</table>';
+            $retval .= '</div>';
         }
         return $retval;
     }
-    
+
+    /**
+     * this will output the view of the activity by unit page
+     * this shows what units are on what activities
+     * @global type $CFG
+     * @param type $courseID
+     * @return string
+     */
     function btec_activity_by_unit_page($courseID)
     {
         global $CFG;
@@ -1023,14 +1114,18 @@
         {
             $retval .= '<h2>'.bcgt_get_qualification_display_name(end($quals)).'</h2>';
         }
+        $modLinking = load_bcgt_mod_linking();
+        //load the icons
+        $modIcons = load_mod_icons($courseID);
         //there must be quals to get this far
         $units = bcgt_get_course_units($courseID, BTECQualification::FAMILYID);
         if($units)
         {
+            $retval .= '<div class="bcgtmodlinkingselections">';
             $manage = has_capability('block/bcgt:manageactivitylinks', $context);
             $link = $CFG->wwwroot.'/blocks/bcgt/forms/add_activity.php?page=addact&';
             $img = $CFG->wwwroot.'/blocks/bcgt/pix/greenPlus.png';
-            $retval .= '<table class="activityLinks">';
+            $retval .= '<table class="activityLinks activityLinksMain" align="center">';
             $retval .= '<thead><th></th><th>'.get_string('unit', 'block_bcgt').
                     '</th><th>'.get_string('activities', 'block_bcgt').'</th></thead>'; 
             $retval .= '<body>';
@@ -1047,37 +1142,370 @@
                 $retval .= '<td>'.$unit->name.'</td>';
                 $activities = BTECQualification::get_unit_activities($courseID, $unit->id);
                 $retval .= '<td>';
-                    $retval .= '<table class="activityLinksAssignmentGroup">';
+                    $retval .= '<table class="activityLinksAssignmentGroup modlinkingsummary">';
                         
-                            foreach($activities AS $activity)
-                            {
-                                $retval .= '<tr>';
-                                $activityDetails = bcgt_get_module_from_course_mod($activity->id);
-                                $retval .= '<td>';
-                                    //get the name
-                                    //get the criteria its on
-                                    //give it an option to be removed
-                                $retval .= '<table class="activityLinksActivities">';
-                                $criterias = get_activity_criteria($activity->id, null, $unit->id);
-                                    $retval .= '<tr><th colspan="'.count($criterias).'">'.$activityDetails->name.'</th></tr>';
-                                    $retval .= '<tr>';
-                                    foreach($criterias AS $criteria)
-                                    {
-                                        $retval .= '<td>'.$criteria->name.'</td>';
-                                    }
-                                    $retval .= '</tr>';
-                                $retval .= '</table>';
-                                $retval .= '</td>';
-                                $retval .= '</tr>';
-                            }
+                    foreach($activities AS $activity)
+                    {
+                        $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, 
+                        $activity->cmodule, $modLinking);
+                        $out = '<tr>';
+                        $activityDetails = bcgt_get_activity_mod_details($activity->id);
+                        $out .= '<td>';
+                            //get the name
+                            //get the criteria its on
+                            //give it an option to be removed
+                        $out .= '<table class="activityLinksActivities">';
+                        $criterias = get_activity_criteria($activity->id, null, $unit->id);
+                        //need to sort these. 
                         
+                        $out .= '<tr>';
+                        $out .= '<th>';
+                        if(array_key_exists($activity->module,$modIcons))
+                        {
+                            $icon = $modIcons[$activity->module];
+                            //show the icon. 
+                            $out .= html_writer::empty_tag('img', array('src' => $icon,
+                                        'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                        }
+                        $out .= '</th>';
+                        $out .= '<th colspan="'.(count($criterias) - 2).'">';
+                        $out .= $activityDetails->name;
+                        $out .= '</th>';
+                        $out .= '<th>';
+                        if($dueDate)
+                        {
+                            $out .= date('d M Y : H:m', $dueDate); 
+                        }
+                        $out .= '</th>';
+                        $out .= '</tr>';
+                        $out .= '<tr>';
+                        foreach($criterias AS $criteria)
+                        {
+                            $out .= '<td>'.$criteria->name.'</td>';
+                        }
+                        $out .= '</tr>';
+                        $out .= '</table>';
+                        $out .= '</td>';
+                        $out .= '</tr>';
+                        $activity->out = $out;
+                        $activity->dueDate = $dueDate;
+                    }
+                       
+                        require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+                    $modSorter = new ModSorter();
+                    usort($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+
+                    foreach($activities AS $activity)
+                    {
+                        $retval .= $activity->out;
+                    }
                     $retval .= '</table>';
                 $retval .= '</td>';
                 $retval .= '</tr>';
             }
             $retval .= '</body>';
             $retval .= '</table>';
+            $retval .= '</div>';
         }
         return $retval;
     }
+    
+    /**
+     * This searches for any units that are attached to the mod
+     * that arent selected now and deletes their selections. 
+     * @global type $DB
+     * @param type $courseModuleID
+     * @param type $units
+     * @return boolean
+     */
+    function bcgt_btec_remove_mod_unit_selection($courseModuleID, $units = array())
+    {
+        //this wants to find all unit selections that were on this courseModuleID
+        //and remove them. 
+        if(!$units || count($units) < 1)
+        {
+            return false;
+        }
+        global $DB;
+        $sql = "SELECT * FROM {block_bcgt_activity_refs} refs WHERE coursemoduleid = ? 
+            AND bcgtunitid NOT IN (";
+        $params = array($courseModuleID);
+        $count = 0;
+        foreach($units AS $unitID)
+        {
+            $count++;
+            $sql .= "?";
+            if($count != count($units))
+            {
+                $sql .= ',';
+            }
+            $params[] = $unitID;
+        }
+        $sql .= ')';
+        $records = $DB->get_records_sql($sql, $params);
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                $DB->delete_records('block_bcgt_activity_refs',array("id"=>$record->id));
+            }
+        }
+    }
+    
+    /**
+     * Tis will add all of the quals and criteria selected for this unit
+     * into the system. 
+     * @param type $courseModuleID
+     * @param type $unitID
+     * @param type $courseID
+     */
+    function bcgt_btec_process_mod_unit_selection($courseModuleID, $unitID, $courseID)
+    {
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELCRITERIA;
+        $unit = Unit::get_unit_class_id($unitID, $loadParams);
+        $criterias = $unit->get_criteria();
+        $criteriasUsed = array();
+        //I really dont want to loop through all criteria for every qual possible
+        foreach($criterias AS $criteria)
+        {
+           if(isset($_POST['u_'.$unitID.'_c_'.$criteria->get_id().'']))
+           {
+               //then we want to insert it
+               $criteriasUsed[] = $criteria->get_id();
+           }
+        }
+        $qualsUnitOn = $unit->get_quals_on('', -1, -1, $courseID );
+        //is it on a qual?
+        foreach($qualsUnitOn AS $qual)
+        {
+            if(isset($_POST['q_'.$qual->id.'_u_'.$unitID]))
+            {
+                //is on this qual so lets insert it. 
+                //we need to get the criteriaIDs. We know the unitID
+                $stdObj = new stdClass();
+                $stdObj->coursemoduleid = $courseModuleID;
+                $stdObj->bcgtunitid = $unitID;
+                $stdObj->bcgtqualificationid = $qual->id;
+                foreach($criteriasUsed AS $criteriaID)
+                {
+                    $stdObj->bcgtcriteriaid = $criteriaID;
+                    insert_activity_onto_unit($stdObj);
+                }
+            }
+        }
+    }
+    
+    /**
+     * This function checked the unitid passed in for any mod changes. 
+     * Has the qualifications it is associated with changed?
+     * Has the criteria selected changed?
+     * @param type $courseModuleID
+     * @param type $unitID
+     * @param type $courseID
+     */
+    function bcgt_btec_process_mod_selection_changes($courseModuleID, $unitID, $courseID)
+    {
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELCRITERIA;
+        $unit = Unit::get_unit_class_id($unitID, $loadParams);
+        $qualsUnitOn = $unit->get_quals_on('', -1, -1, $courseID);
+        //now check quals. 
+        foreach($qualsUnitOn AS $qual)
+        {
+            //is it checked?
+            if(!isset($_POST['q_'.$qual->id.'_u_'.$unitID]))
+            {
+                unset($qualsUnitOn[$qual->id]);
+                delete_activity_by_qual_from_unit($courseModuleID, $qual->id, $unitID);
+            }
+        }
+        $criterias = $unit->get_criteria();
+        foreach($criterias AS $criteria)
+        {
+            //was it checked before?
+            $criteriaOnActivity = get_activity_criteria($courseModuleID, $qualsUnitOn);
+            if(isset($_POST['u_'.$unitID.'_c_'.$criteria->get_id()])
+                    && !array_key_exists($criteria->get_id(), $criteriaOnActivity))
+            {
+                //so its been checked and it wasnt in the array from the database
+                //therefore INSERT!
+                foreach($qualsUnitOn AS $qual)
+                {
+                    $stdObj = new stdClass();
+                    $stdObj->coursemoduleid = $courseModuleID;
+                    $stdObj->bcgtunitid = $unitID;
+                    $stdObj->bcgtqualificationid = $qual->id;
+                    $stdObj->bcgtcriteriaid = $criteria->get_id();
+                    insert_activity_onto_unit($stdObj);
+                }
+            }
+            elseif(!isset($_POST['u_'.$unitID.'_c_'.$criteria->get_id()])
+                    && array_key_exists($criteria->get_id(), $criteriaOnActivity))
+            {
+                //its in the array from before and its no longer checked!
+                //therefore delete
+                delete_activity_by_criteria_from_unit($courseModuleID, $criteria->get_id(), $unitID);
+            }
+            //is it checked? 
+        }
+    }
+    
+    /**
+     * This function will check the units that are being addd to the mod
+     * It will check if its a new unit (and thus process all units and criteria)
+     * If its a unit we already had it will check for any changes (quals selected, criteria ticked)
+     * @param type $courseModuleID
+     * @param type $unitID
+     * @param type $courseID
+     */
+    function bcgt_btec_process_mod_units($courseModuleID, $unitID, $courseID)
+    {
+        $activityUnits = get_activity_units($courseModuleID);
+        //was this unit on it before?
+        if(array_key_exists($unitID, $activityUnits))
+        {
+            //then we need to check it
+            bcgt_btec_process_mod_selection_changes($courseModuleID, $unitID, $courseID);
+        }
+        else 
+        {
+            //we are just adding it all
+            bcgt_btec_process_mod_unit_selection($courseModuleID, $unitID, $courseID);
+        }
+        
+    }
+  
+
+    
+function bcgt_btec_get_criteria_submission_summary($criteriaID, $courseID = -1, $qualID = -1, 
+                                    $groupingID = -1)
+{
+    
+    $courseJoinSql = " JOIN {block_bcgt_course_qual} coursequal ON coursequal.bcgtqualificationid = 
+            qualunits.bcgtqualificationid 
+            JOIN {context} con ON con.instanceid = coursequal.courseid 
+            JOIN {role_assignments} roleass ON roleass.contextid = con.id 
+            JOIN {user} user ON user.id = roleass.userid AND user.id = userunit.userid";
+    
+    $groupingJoinSql = " JOIN {groups_members} members ON members.userid = user.id 
+            JOIN {groupings_groups} gg ON gg.groupid = members.groupid";
+    
+    $courseWhere = " coursequal.courseid = ?";
+    $qualWhere = " qualunits.bcgtqualificationid = ?";
+    $groupingWhere = " gg.groupingid = ?";
+    
+    global $DB;
+    $params = array();
+    $sql = "SELECT totalcount.count AS totalcount, attempted.count AS attemptedcount, 
+        achieved.count as achievedcount FROM";
+    
+    $totalSql = "(SELECT count(distinct(userunit.userid)) as count FROM {block_bcgt_user_unit} userunit 
+        JOIN {block_bcgt_criteria} crit ON crit.bcgtunitid = userunit.bcgtunitid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = userunit.bcgtunitid 
+        LEFT OUTER JOIN {block_bcgt_user_criteria} usercrit ON usercrit.bcgtcriteriaid = crit.id 
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid ";
+    if($courseID != -1)
+    {
+        $totalSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $totalSql .= $groupingJoinSql;
+    }
+    $totalSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $totalSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $totalSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $totalSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    }
+
+    $sql .= $totalSql." ) AS totalcount";
+    
+    $attemptedSql = ", (SELECT count(distinct(usercrit.userid)) as count 
+        FROM {block_bcgt_user_criteria} 
+        usercrit JOIN {block_bcgt_criteria} crit ON crit.id = usercrit.bcgtcriteriaid
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = crit.bcgtunitid 
+        JOIN {block_bcgt_user_unit} userunit ON userunit.userid = usercrit.userid AND qualunits.bcgtunitid = userunit.bcgtunitid";
+    if($courseID != -1)
+    {
+        $attemptedSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $attemptedSql .= $groupingJoinSql;
+    }
+    $attemptedSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $attemptedSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $attemptedSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $attemptedSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    } 
+    $attemptedSql .= " AND value.shortvalue != ? AND value.shortvalue != ? 
+            AND value.shortvalue != ? AND usercrit.bcgtvalueid IS NOT NULL) AS attempted";
+    $params[] = 'WNS';
+    $params[] = 'ABS';
+    $params[] = 'N/A';
+    $sql .= $attemptedSql;
+    //now the achieved sql. 
+    $achievedSql = ", (SELECT count(distinct(usercrit.userid)) as count 
+        FROM {block_bcgt_user_criteria} 
+        usercrit JOIN {block_bcgt_criteria} crit ON crit.id = usercrit.bcgtcriteriaid
+        LEFT OUTER JOIN {block_bcgt_value} value ON value.id = usercrit.bcgtvalueid 
+        JOIN {block_bcgt_qual_units} qualunits ON qualunits.bcgtunitid = crit.bcgtunitid
+        JOIN {block_bcgt_user_unit} userunit ON userunit.userid = usercrit.userid AND qualunits.bcgtunitid = userunit.bcgtunitid";
+    if($courseID != -1)
+    {
+        $achievedSql .= $courseJoinSql;
+    }
+    if($groupingID != -1)
+    {
+        $achievedSql .= $groupingJoinSql;
+    }
+    $achievedSql .= " WHERE crit.id = ?";
+    $params[] = $criteriaID;
+    if($courseID != -1)
+    {
+        $achievedSql .= " AND ".$courseWhere;
+        $params[] = $courseID;
+    }
+    if($qualID != -1)
+    {
+        $achievedSql .= " AND ".$qualWhere;
+        $params[] = $qualID;
+    }
+    if($groupingID != -1)
+    {
+        $achievedSql .= " AND ".$groupingWhere;
+        $params[] = $groupingID;
+    } 
+    $achievedSql .= " AND value.shortvalue = ? ) AS achieved";
+    $params[] = 'A';
+    $sql .= $achievedSql;
+    return $DB->get_record_sql($sql, $params);
+}
+    
 ?>

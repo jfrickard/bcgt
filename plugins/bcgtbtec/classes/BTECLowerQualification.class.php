@@ -9,7 +9,8 @@
  */
 
 global $CFG;
-require_once('BTECQualification.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECQualification.class.php');
 class BTECLowerQualification extends BTECQualification {
 	
 	const ID = 5;

@@ -31,7 +31,13 @@ class CriteriaSorter
 	{
 		return self::ComparisonDelegate($a, $b, "ObjectName");
 	}
-		
+	
+    function ComparisonDelegateByDBtName($a, $b)
+	{
+		return self::ComparisonDelegate($a, $b, "DBName");
+	}
+    
+    
 	function ComparisonDelegate($a, $b, $field)
 	{			
 		if($field == 'name')
@@ -64,10 +70,17 @@ class CriteriaSorter
 		}
 		elseif($field == 'arrayNameLetters')
 		{
+            //if the criteria contain dots
+            $numLoc = 1;
+            if(strpos($a, '_'))
+            {
+                $numLoc++;
+                $numLoc++;
+            }
 			$aStr = substr($a, 0, 1);
 			$bStr = substr($b, 0, 1);
-			$aNum = substr($a, 1);
-			$bNum = substr($b, 1);
+			$aNum = substr($a, $numLoc);
+            $bNum = substr($b, $numLoc);
 			return self::sort_on_names($aStr, $bStr, $aNum, $bNum);
 		}
 		elseif($field == 'ObjectName')
@@ -78,6 +91,14 @@ class CriteriaSorter
 			$bNum = substr($b->get_name(), 1);
 			return self::sort_on_names($aStr, $bStr, $aNum, $bNum);
 		}
+        elseif($field == 'DBName')
+        {
+            $aStr = substr($a->name, 0, 1);
+			$bStr = substr($b->name, 0, 1);
+			$aNum = substr($a->name, 1);
+			$bNum = substr($b->name, 1); 
+            return self::sort_on_names($aStr, $bStr, $aNum, $bNum);
+        }
 	}
 	
 	private function sort_on_names($aStr, $bStr, $aNum, $bNum)

@@ -5,7 +5,7 @@ class bcgtbtec extends bcgt {
     const NAME = 'bcgtbtec';
     const TITLE = 'BTEC';
     
-    const VERSION = 2014010800;  
+    const VERSION = 2014021707;  
     
     function bcgtbtec()
     {
@@ -30,7 +30,6 @@ class bcgtbtec extends bcgt {
         {
             //do we need to upgrade?
             $oldVersion = $plugin->version;
-            echo "Checking BTEC Upgrade: $oldVersion vs ".bcgtbtec::VERSION."<br />";
             if($oldVersion < bcgtbtec::VERSION)
             {
                 echo "Running BTEC Upgrade<br />";

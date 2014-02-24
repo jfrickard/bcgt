@@ -8,7 +8,7 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
-
+global $CFG;
 require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECCriteria.class.php');
 class BTECFoundationCriteria extends BTECCriteria{
     

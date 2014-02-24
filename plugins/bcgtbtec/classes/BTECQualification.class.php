@@ -437,11 +437,11 @@ class BTECQualification extends Qualification {
      */
     //$loadLevel = Qualification::LOADLEVELUNITS, $loadAward = false
     public function load_users($role = 'student', $loadStudentQuals = false, 
-            $loadParams = null, $courseID = -1)
+            $loadParams = null, $courseID = -1, $groupingID = -1)
     {
         global $DB;
         $roleDB = $DB->get_record_sql('SELECT id FROM {role} WHERE shortname = ?', array($role));
-        $users = $this->get_users($roleDB->id, '', 'lastname ASC', $courseID);
+        $users = $this->get_users($roleDB->id, '', 'lastname ASC', $courseID, true, $groupingID);
         $usersQuals = array();
         if($users)
         {
@@ -463,6 +463,7 @@ class BTECQualification extends Qualification {
                 $this->$propertyQual = $usersQuals;
             }
         }
+        return $users;
     }
     
     /**
@@ -514,6 +515,540 @@ class BTECQualification extends Qualification {
         
     }
     
+    public static function get_mod_tracker_options($courseModuleID, $courseID)
+    {
+        $retval = '';
+        $jsModule = array(
+            'name'     => 'mod_bcgtbtec',
+            'fullpath' => '/blocks/bcgt/plugins/bcgtbtec/js/bcgtbtec.js',
+            'requires' => array('base', 'io', 'node', 'json', 'event', 'button')
+        );
+        global $PAGE, $CFG;
+        $PAGE->requires->js_init_call('M.mod_bcgtbtec.btecmodactivity', null, true, $jsModule);
+        $unitsSelected = '';
+        $units = bcgt_get_course_units($courseID, BTECQualification::FAMILYID);
+        $activityUnits = get_activity_units($courseModuleID);
+        if($activityUnits)
+        {
+            foreach($activityUnits AS $activityUnit)
+            { 
+                $unitsSelected .= '_'.$activityUnit->id;
+                $retval .= '<div class="bcgt_col bgctActivityUnit">';
+                $retval .= get_btec_activity_unit_table($courseModuleID, $activityUnit->id, $courseID, false, true);
+                $retval .= '</div>';
+            }
+        }
+        $retval .= '<label>'.get_string('addnewunit', 'block_bcgt').' : </label><br />';
+        $retval .= '<select name="nUID" id="nUID">';
+        $retval .= '<option value="-1"></option>';
+        if($units)
+        {
+            foreach($units AS $newUnit)
+            {
+                $disabled = '';
+                if(array_key_exists($newUnit->id, $activityUnits))
+                {
+                    $disabled = 'disabled';
+                }
+                $retval .= '<option '.$disabled.' value="'.$newUnit->id.'">'.$newUnit->name.'</option>';
+            }
+        }
+        $retval .= '</select>';
+        $retval .= '<input type="submit" id="bcgtAddUnit" course="'.
+                $courseID.'" cmid="'.$courseModuleID.'" name="addUnit" value="'.
+                get_string('addunit', 'block_bcgt').'"/>';
+        $retval .= '<span id="bcgtloading"></span>';
+        $retval .= '<input type="hidden" name="bcgtunitsselected" value="'.$unitsSelected.'" id="bcgtunitsselected"/>';
+        $retval .= '<div id="bcgtMODAddUnitSelection">';
+        $retval .= '</div>';
+        return $retval;
+    }
+    
+    public static function process_mod_tracker_options($courseModuleID, $courseID)
+    {
+        //get selected units
+        $units = null;
+        $unitsSelected = optional_param('bcgtunitsselected', '', PARAM_TEXT);
+        if($unitsSelected != '')
+        {
+            $units = explode('_', $unitsSelected);
+        }
+        //does the activity exist in the bcgt table already?
+        //no then add all selections
+        //yes then check all
+        //then check any for deletions.
+        //are we adding any?
+        if($units)
+        {
+            //we are adding some
+            foreach($units AS $unit)
+            {
+                //unit should be the id
+                if($unit == '')
+                {
+                    //when exploding we can get a ''
+                    continue;
+                }
+                bcgt_btec_process_mod_units($courseModuleID, $unit, $courseID);
+            }
+        }
+        bcgt_btec_remove_mod_unit_selection($courseModuleID, $units);  
+        //explode the string on _
+        //loop over each unit
+        
+    }
+    
+    public static function gradebook_check_page($courseID)
+    {
+        //need a drop down of groupINGs:
+        //all and each group name on course. 
+        global $PAGE;
+        $retval = '';
+        $groupingID = -1;
+        $jsModule = array(
+            'name'     => 'mod_bcgtbtec',
+            'fullpath' => '/blocks/bcgt/plugins/bcgtbtec/js/bcgtbtec.js',
+            'requires' => array('base', 'io', 'node', 'json', 'event', 'button')
+        );
+        $PAGE->requires->js_init_call('M.mod_bcgtbtec.initactivitiescheck', array(), true, $jsModule);
+        load_javascript(true);
+        //get list of quals that are of type BTEC that are on this course:
+        $quals = bcgt_get_course_quals($courseID, BTECQualification::FAMILYID);
+        if($quals)
+        {
+            $retval .= '<table>';
+            foreach($quals AS $qual)
+            {
+                $retval .= '<tr>';
+                $retval .= '<td>'.get_string('check', 'block_bcgt').'</td>';
+                $retval .= '<td>'.bcgt_get_qualification_display_name($qual).'</td>';
+                $retval .= '</tr>';
+                $retval .= '<tr>';
+                //then lets just display it
+                $loadParams = new stdClass();
+                $loadParams->loadLevel = Qualification::LOADLEVELALL;
+                $qualification = Qualification::get_qualification_class_id($qual->id, $loadParams);
+                $retval .= $qualification->display_gradebook_check_grid($courseID, $groupingID);
+                $retval .= '</tr>';
+            }
+            $retval .= '</table>';
+        }
+        return $retval;
+    }
+    
+    public function display_gradebook_check_grid($courseID = -1, $groupingID = -1)
+    {
+        global $CFG;
+        $retval = '';
+
+        //do we have the capibilities to view advanced?
+        //simple = just shows icons
+        //advanced = shows number of students submitted etc. 
+        //are we viewing as a student or just the assignments overall
+        //student shows colour coded cells dependant on what they have done. 
+        
+        
+        //get a list of all of activities
+        //that this qual is on
+        //if courseid is set then check on that
+        //if groupid is set then check on that
+        
+        
+        //to order by date: cant need to order by sort order. 
+        $criteriaNames = $this->get_used_criteria_names();
+        require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/CriteriaSorter.class.php');
+        $criteriaSorter = new CriteriaSorter();
+		usort($criteriaNames, array($criteriaSorter, "ComparisonDelegateByArrayNameLetters"));
+        $this->usedCriteriaNames = $criteriaNames;
+        
+        //are we a student view of not?
+        $userID = optional_param('sID', -1, PARAM_INT);
+        $view = optional_param('view', 'os', PARAM_TEXT);
+        if($userID == -1)
+        {
+            //then we are looking at specific student they always see the icons. 
+            //therefore need the key.
+            $retval .= $this->get_grid_assignment_overview_buttons($view, $courseID);
+        }
+        $retval .= $this->get_mod_key($courseID, $groupingID, $view); 
+        
+		$header = $this->get_simple_grid_header($criteriaNames);
+//        $this->load_mod_info($courseID);
+        $retval .= '<table id="" class="bcgt_table" align="center">';
+		$retval .= $header;
+		
+		$retval .= "<tbody>";
+        
+        $retval .= $this->get_gradebook_overview_data($courseID, $groupingID);
+        
+        $retval .= "</tbody>";
+        $retval .= "</table>";
+        return $retval;
+    }
+    
+    protected function get_mod_key($courseID, $groupingID, $view = '')
+    {
+        global $OUTPUT, $CFG, $COURSE;
+        $retval = '';
+        $currentContext = context_course::instance($COURSE->id);
+        $retval .= '<div id="bcgtmodkey" class="bcgt_mod_key bcgt_mod_key'.$view.'">';
+        switch($view)
+        {
+            case"oa":
+                $modIconArray = array();
+                $activities = bcgt_get_coursemodules_types_in_course($courseID, $this->id, $groupingID);
+                if($activities)
+                {
+                    $retval .= '<table class="bcgtmodkey" align="center">';
+                    $retval .= '<tr>';
+                    //i want thre columns
+                    foreach($activities AS $activity)
+                    {
+                        $retval .= '<td>';
+                        $icon = $OUTPUT->pix_url('icon', $activity->name);
+                        $modIconArray[$activity->name] = $icon;
+                        $retval .= html_writer::empty_tag('img', array('src' => $icon,
+                                'class' => 'bcgtmodkeyicon activityicon', 'alt' => $activity->name));
+                        $retval .= '<span class="bcgtmodkeymod"> '.$activity->name.'</span>';
+                        $retval .= '</td>';
+                    }
+                    $retval .= '</tr>';
+                    $retval .= '<tr><td colspan="'.count($activities).'">';
+                    $retval .= '<span class="key"><img src="'.$CFG->wwwroot.
+                    '/blocks/bcgt/images/redcross.png"/> = ';
+                    $retval .= get_string('criterianolinkmod', 'block_bcgt');
+                    if(has_capability('block/bcgt:manageactivitylinks', $currentContext))
+                    {
+                        $retval .= ' <span class="criterialinkextra"> ('.
+                            get_string('criterianolinkextrainfo', 'block_bcgt').')</span>';
+                    }
+                    $retval .= '</td></tr>';
+                    $retval .= '</table>';
+                }
+                $this->modIcons = $modIconArray;
+                break;
+            case"os":
+                $retval .= '<span class="key"><img src="'.
+                    $CFG->wwwroot.'/blocks/bcgt/images/greentick.png'.
+                    '"/> = ';
+                $retval .= get_string('criterialinkedmod', 'block_bcgt');
+                $retval .= ' <span class="criterialinkextra"> ('.
+                        get_string('criterialinkedextrainfo', 'block_bcgt').')</span>';
+                $retval .= '</span>';
+                $retval .= '<span class="key"><img src="'.$CFG->wwwroot.
+                    '/blocks/bcgt/images/redcross.png"/> = ';
+                $retval .= get_string('criterianolinkmod', 'block_bcgt');
+                if(has_capability('block/bcgt:manageactivitylinks', $currentContext))
+                {
+                    $retval .= ' <span class="criterialinkextra"> ('.
+                        get_string('criterianolinkextrainfo', 'block_bcgt').')</span>';
+                }
+                $retval .= '</span>';
+                break;
+            default:
+                break;
+        }
+        $retval .= '</div>';
+        return $retval;
+    }
+
+    protected function load_mod_info($courseID)
+    {
+        $modinfo = get_fast_modinfo($courseID);
+//        print_object($modinfo);
+        $activities = bcgt_get_coursemodules_in_course($courseID, $this->id);
+        foreach($activities AS $activity)
+        {
+            $modnumber = $activity->id;
+            $instancename = $activity->name;
+            
+            $mod = $modinfo->cms[$modnumber];
+//            $mod->get_icon_url();
+            if ($mod && $url = $mod->get_url()) {
+                // Display link itself.
+                //Accessibility: for files get description via icon, this is very ugly hack!
+                $altname = $mod->modfullname;
+                // Avoid unnecessary duplication: if e.g. a forum name already
+                // includes the word forum (or Forum, etc) then it is unhelpful
+                // to include that in the accessible description that is added.
+                if (false !== strpos(textlib::strtolower($instancename),
+                        textlib::strtolower($altname))) {
+                    $altname = '';
+                }
+                // File type after name, for alphabetic lists (screen reader).
+                if ($altname) {
+                    $altname = get_accesshide(' '.$altname);
+                }
+
+                $groupinglabel = '';
+                    if (!empty($mod->groupingid) && has_capability('moodle/course:managegroups', context_course::instance($courseID))) {
+                        $groupings = groups_get_all_groupings($courseID);
+                        $groupinglabel = html_writer::tag('span', '('.format_string($groupings[$mod->groupingid]->name).')',
+                                array('class' => 'groupinglabel'));
+                    }
+
+                // Get on-click attribute value if specified and decode the onclick - it
+                // has already been encoded for display (puke).
+                $onclick = htmlspecialchars_decode($mod->get_on_click(), ENT_QUOTES);
+
+                $activitylink = html_writer::empty_tag('img', array('src' => $mod->get_icon_url(),
+                        'class' => 'iconlarge activityicon', 'alt' => $mod->modfullname)).
+                        html_writer::tag('span', $instancename . $altname, array('class' => 'instancename'));
+                echo html_writer::link($url, $activitylink, array('class' => '', 'onclick' => $onclick)) .
+                        $groupinglabel;
+            }
+        }
+    }
+    
+    public function get_gradebook_overview_data($courseID, $groupingID)
+    {
+        global $CFG, $OUTPUT, $COURSE;
+        $currentContext = context_course::instance($COURSE->id);
+        $retval = '';
+        $criteriaNames = $this->usedCriteriaNames;
+        $units = $this->units;
+        $unitSorter = new UnitSorter();
+		usort($units, array($unitSorter, "ComparisonDelegateByType"));
+        $userID = optional_param('sID', -1, PARAM_INT);
+        $view = optional_param('view', 'os', PARAM_TEXT);
+        if($userID != -1)
+        {
+            //then we are displaying that users data
+            $loadParams = new stdClass();
+            $loadParams->loadLevel = Qualification::LOADLEVELALL;
+            $this->load_student_information($userID, $loadParams);
+        }
+        //lets get the data:
+        //by unit:
+        $rowCount = 0;
+        $activityUnitCriteria = array();
+        $activityUnits = Project::get_qual_mods_by_unit($courseID, $this->id, $groupingID);
+        foreach($units AS $unit)
+        {
+            $rowCount++;
+            if($activityUnits && array_key_exists($unit->get_id(), $activityUnits))
+            {
+                //do we have activities on this unit?
+                $skipEntireUnit = false;
+                $activityUnitCriteria = $activityUnits[$unit->get_id()];
+            }
+            else
+            {
+                //no well then dont check for any of the criteria 
+                //on this unit then. 
+                $skipEntireUnit = true;
+            }
+            $rowClass = 'rO';
+            if($rowCount % 2)
+            {
+                $rowClass = 'rE';
+            }
+            $retval .= '<tr class="'.$rowClass.'">';
+            $retval .= '<td>';
+            if(has_capability('block/bcgt:manageactivitylinks', $currentContext))
+            {
+                $link = $CFG->wwwroot.'/blocks/bcgt/forms/add_activity.php?'.
+                        'page=addact&uID='.$unit->get_id().'&cID='.$courseID.
+                        '&fID='.BTECQualification::FAMILYID.'';
+                $retval .= '<a href="'.$link.'"><img class="modcheckicon" src="'.
+                    $CFG->wwwroot.'/blocks/bcgt/pix/activity.jpg" '.
+                    'title="'.get_string('unitactivitytracker', 'block_bcgt').'"'.
+                    'alt="'.get_string('unitactivitytracker', 'block_bcgt').'"/>'.
+                    '</a>';
+            }  
+            $retval .= '</td>';
+            $retval .= '<td>';
+            if(has_capability('block/bcgt:viewclassgrids', $currentContext))
+            {
+                $link = $CFG->wwwroot.'/blocks/bcgt/grids/unit_grid.php?cID='.
+                        $courseID.'&uID='.$unit->get_id().'&grID='.$groupingID.'&view=act&qID='.$this->id.'&order=act';
+                $retval .= '<a href="'.$link.'"><img class="modcheckicon" src="'.
+                    $CFG->wwwroot.'/blocks/bcgt/pix/trackericon.jpg" '.
+                    'title="'.get_string('unitactivityselection', 'block_bcgt').'"'.
+                    'alt="'.get_string('unitactivityselection', 'block_bcgt').'"/></a>';
+            }
+            $retval .= '</td>';
+            $retval .= '<td>';
+            $retval .= $unit->get_uniqueID().' : '.$unit->get_name();
+            $retval .= '</td>';
+            $previousLetter = '';
+            foreach($criteriaNames AS $criteriaName)
+            {
+                $letter = substr($criteriaName, 0, 1);
+                if($previousLetter != '' && $previousLetter != $letter)
+                {
+                    //if the criteria letter changes (i.e. P to M) then lets 
+                    //create a divider. 
+                    $retval .= "<td class='critdivider'><span class='critdivider'></span></td>";
+                }
+                $previousLetter = $letter;
+                
+                //is the criteriaName on the unit??
+                $criteriaObject = $unit->get_single_criteria(-1, $criteriaName);
+                if($criteriaObject)
+                {
+                    $courseModIDs = array();
+                    $criteriaNoMod = false;
+                    if(!$skipEntireUnit && array_key_exists($criteriaObject->get_id(), $activityUnitCriteria))
+                    {
+                        //then we have the criteria
+                        //for this unit
+                        //that is on an activity. 
+                        $criteriaNoMod = false;
+                        $courseModIDs = $activityUnitCriteria[$criteriaObject->get_id()];
+                    }
+                    else
+                    {
+                        $criteriaNoMod = true;
+                    }
+                    //are we in teacher simple mode:
+                    //if it is, then just output a tick
+                    //if the criteria isnt on an assignment then RED
+                    if(!$criteriaNoMod)
+                    {
+                        if($userID != -1)
+                        {
+                            //then its the users view
+                            //out put the symbol(s) for the mods
+                            //colour code the border
+                        }
+                        elseif($view == 'subatt')
+                        {
+                            //output the statistics of how many
+                            //IN, Marked, Total
+                            $retval .= '<td>';
+                            //go and get the total no student,
+                            //total where its not N/A and not WNS
+                            //total achieved. 
+                            $noStudents = bcgt_get_criteria_submission_students(
+                                    $criteriaObject->get_id(), $courseID, $this->id, 
+                                    $groupingID);
+                            $noAttempted = bcgt_get_criteria_submission_attempted(
+                                    $criteriaObject->get_id(), $courseID, $this->id, $groupingID);
+                            if($noStudents && $noAttempted)
+                            {
+                                $retval .= round(($noAttempted->count/$noStudents->count)*100,0).'%';
+                            }
+                            $retval .= '</td>';
+                        }
+                        elseif($view == 'subach')
+                        {
+                            //output the statistics of how many
+                            //IN, Marked, Total
+                            $retval .= '<td>';
+                            //go and get the total no student,
+                            //total where its not N/A and not WNS
+                            //total achieved. 
+                            $noStudents = bcgt_get_criteria_submission_students(
+                                    $criteriaObject->get_id(), $courseID, $this->id, 
+                                    $groupingID);
+                            $noAchieved = bcgt_get_criteria_submission_achieved(
+                                    $criteriaObject->get_id(), $courseID, $this->id, $groupingID);
+                            if($noStudents && $noAchieved)
+                            {
+                                $retval .= round(($noAchieved->count/$noStudents->count)*100,0).'%';
+                            }
+                            $retval .= '</td>';
+                        }
+                        elseif($view == 'oa')
+                        {
+                            $retval .= '<td class="bcgtcritass">';
+                            //output the icon. 
+                            $mods = get_criteria_distinct_mods($criteriaObject->get_id(), 
+                                    $courseID, $this->id, 
+                                    $groupingID);
+//                            print_object($mods);
+                            if($mods)
+                            {
+                                $modIcons = $this->modIcons;
+                                foreach($mods AS $mod)
+                                {
+                                    $retval .= '<span crit="'.$criteriaObject->get_id()
+                                            .'" qual="'.$this->id.'"  group="'.$groupingID.
+                                            '" course="'.$courseID.'" mod="'.$mod->name.
+                                            '" class="bcgtcritass criteriamod">';
+                                    
+                                    if(array_key_exists($mod->name, $modIcons))
+                                    {
+                                        $icon = $modIcons[$mod->name];
+                                    }
+                                    $retval .= html_writer::empty_tag('img', array('src' => $icon,
+                                        'class' => 'bcgtmodcriticon activityicon', 'alt' => $mod->name));
+                                    if($mod->count != 1)
+                                    {
+                                        $retval .= '<sup>'.$mod->count.'</sup>';
+                                    }
+                                    $retval .= '</span>';
+                                }
+                            }
+                            else
+                            {
+                               // output the question mark.  
+                            }
+                            $retval .= '</td>';
+                        }
+                        else
+                        {
+                            //the view must be overview simple
+                            $retval .= '<td class="bcgtcritass"><span '.
+                                    'crit="'.$criteriaObject->get_id()
+                                    .'" qual="'.$this->id.'"  group="'.$groupingID.
+                                    '" course="'.$courseID.'" mod="" '.
+                                    'class="bcgtcritass criteriamod"><img src="'.
+                                $CFG->wwwroot.'/blocks/bcgt/images/greentick.png'.
+                                '"/></span></td>';//is this criteria on an assignment:
+                        }
+                        
+                    }
+                    else
+                    {
+                        if($userID == -1)
+                        {
+                            //then its not the users view. 
+                            //just put the cross to denote not on 
+                            //an assignment
+                            $retval .= '<td course="'.$courseID.'" uID="'.
+                                    $unit->get_id().'" fID="'.
+                                    BTECQualification::FAMILYID.'" class="bcgtcritnoass">';
+                            $retval .= '<span class="bcgtcritass criteriamodno">';
+                            $retval .= '<span class="bcgtcritnoass">'.
+                                '<img src="'.$CFG->wwwroot.'/blocks/bcgt/images/redcross.png'.
+                                '"/>'.
+                                '</span>';
+                            $retval .= '</span>';
+                            $retval .= '</td>';
+                        }
+                        else
+                        {
+                            //its the users view. 
+                            //get the grid symbol. 
+                        }
+                        
+                    }
+                    
+                    
+                    //are we in teacher advanced mode:
+                    //display the icons (plus number)
+                    //on the grid. 
+                    
+                    //are we in student mode:
+                    //display the icons with colour coding
+                }
+                else
+                {
+                    //this criteria isnt on the unit. 
+                    $retval .= '<td class="unitnocrit"><span class="unitnocrit">';
+                    $retval .= '</span></td>';
+                }
+                
+                
+            }    
+                
+            $retval .= '</tr>';
+        }
+        return $retval;
+    }
+    
     public static function add_activity_view_page($courseID, $unitID, $activityID)
     {
         $jsModule = array(
@@ -541,12 +1076,7 @@ class BTECQualification extends Qualification {
             $activityID = $newActivityID;
         }
         
-        //two boxes. 
-            //one that is an activity
-            //then units to add
-            //second is unit
-            //then activities to add
-        $activities = get_coursemodules_in_course('assign', $courseID, 'm.duedate');
+        $activities = bcgt_get_coursemodules_in_course($courseID);
         $units = bcgt_get_course_units($courseID, BTECQualification::FAMILYID);
         $activityUnits = get_activity_units($activityID);
         
@@ -589,39 +1119,8 @@ class BTECQualification extends Qualification {
                         {
                             continue;
                         }
-                        $loadParams = new stdClass();
-                        $loadParams->loadLevel = Qualification::LOADLEVELCRITERIA;
-                        $unit = Unit::get_unit_class_id($uID, $loadParams);
-                        $criterias = $unit->get_criteria();
-                        $criteriasUsed = array();
-                        //I really dont want to loop through all criteria for every qual possible
-                        foreach($criterias AS $criteria)
-                        {
-                           if(isset($_POST['u_'.$uID.'_c_'.$criteria->get_id().'']))
-                           {
-                               //then we want to insert it
-                               $criteriasUsed[] = $criteria->get_id();
-                           }
-                        }
-                        $qualsUnitOn = $unit->get_quals_on('', -1, -1, $courseID );
-                        //is it on a qual?
-                        foreach($qualsUnitOn AS $qual)
-                        {
-                            if(isset($_POST['q_'.$qual->id.'_u_'.$uID]))
-                            {
-                                //is on this qual so lets insert it. 
-                                //we need to get the criteriaIDs. We know the unitID
-                                $stdObj = new stdClass();
-                                $stdObj->coursemoduleid = $activityID;
-                                $stdObj->bcgtunitid = $uID;
-                                $stdObj->bcgtqualificationid = $qual->id;
-                                foreach($criteriasUsed AS $criteriaID)
-                                {
-                                    $stdObj->bcgtcriteriaid = $criteriaID;
-                                    insert_activity_onto_unit($stdObj);
-                                }
-                            }
-                        }
+                        
+                        bcgt_btec_process_mod_unit_selection($activityID, $uID, $courseID);
                     }
                     $newUnits = '';
                 }
@@ -637,49 +1136,7 @@ class BTECQualification extends Qualification {
                             delete_activity_from_unit($activityID, $activityUnit->id);
                             continue;
                         }
-                        $loadParams = new stdClass();
-                        $loadParams->loadLevel = Qualification::LOADLEVELCRITERIA;
-                        $unit = Unit::get_unit_class_id($activityUnit->id, $loadParams);
-                        $qualsUnitOn = $unit->get_quals_on('', -1, -1, $courseID);
-                        //now check quals. 
-                        foreach($qualsUnitOn AS $qual)
-                        {
-                            //is it checked?
-                            if(!isset($_POST['q_'.$qual->id.'_u_'.$activityUnit->id]))
-                            {
-                                unset($qualsUnitOn[$qual->id]);
-                                delete_activity_by_qual_from_unit($activityID, $qual->id, $activityUnit->id);
-                            }
-                        }
-                        $criterias = $unit->get_criteria();
-                        foreach($criterias AS $criteria)
-                        {
-                            //was it checked before?
-                            $criteriaOnActivity = get_activity_criteria($activityID, $qualsUnitOn);
-                            if(isset($_POST['u_'.$activityUnit->id.'_c_'.$criteria->get_id()])
-                                    && !array_key_exists($criteria->get_id(), $criteriaOnActivity))
-                            {
-                                //so its been checked and it wasnt in the array from the database
-                                //therefore INSERT!
-                                foreach($qualsUnitOn AS $qual)
-                                {
-                                    $stdObj = new stdClass();
-                                    $stdObj->coursemoduleid = $activityID;
-                                    $stdObj->bcgtunitid = $activityUnit->id;
-                                    $stdObj->bcgtqualificationid = $qual->id;
-                                    $stdObj->bcgtcriteriaid = $criteria->get_id();
-                                    insert_activity_onto_unit($stdObj);
-                                }
-                            }
-                            elseif(!isset($_POST['u_'.$activityUnit->id.'_c_'.$criteria->get_id()])
-                                    && array_key_exists($criteria->get_id(), $criteriaOnActivity))
-                            {
-                                //its in the array from before and its no longer checked!
-                                //therefore delete
-                                delete_activity_by_criteria_from_unit($activityID, $criteria->get_id(), $activityUnit->id);
-                            }
-                            //is it checked? 
-                        }
+                        bcgt_btec_process_mod_selection_changes($activityID, $activityUnit->id, $courseID);
                     }
                 }
                 redirect($CFG->wwwroot.'/blocks/bcgt/forms/activities.php?cID='.$courseID.'&tab=act');
@@ -691,7 +1148,7 @@ class BTECQualification extends Qualification {
         
         //$retval = '<div class="bcgt_float_container bcgt_two_c_container">';
         //$retval .= '<div class="bcgt_col bcgt_admin_left">';
-        $retval = '<div class="bcgt_col">';
+        $retval = '<div class="bcgt_col bcgt_unit_activities">';
         $retval .= '<h2>'.get_string('addunitsactivityheader', 'block_bcgt').'</h2>';
         $retval .= '<div class="bcgt_col bgctSelectActivity">';
         $retval .= '<label for="aID">'.get_string('selectactivity', 'block_bcgt').' : </label>';
@@ -707,7 +1164,7 @@ class BTECQualification extends Qualification {
                 {
                     $selected = 'selected';
                 }
-                $retval .= '<option '.$selected.' value="'.$activity->id.'">'.$activity->name.'</option>';
+                $retval .= '<option '.$selected.' value="'.$activity->id.'">'.$activity->name.' ('.$activity->module.')</option>';
             }
         }
         $retval .= '</select><br />';
@@ -789,7 +1246,7 @@ class BTECQualification extends Qualification {
             $retval .= get_btec_activity_unit_table($activityID, $newUnitID, $courseID, true);
             $retval .= '</div>';
         }
-        $retval .= '<br /><br /><input type="submit" name="saveUnitsAcc" value="'.get_string('saveassignment', 'block_bcgt').'"/>';
+        $retval .= '<br /><br /><input class="save" type="submit" name="saveUnitsAcc" value="'.get_string('saveassignment', 'block_bcgt').'"/>';
         
         $retval .= '</div>';
         // **********************************************************************************************    
@@ -909,7 +1366,7 @@ class BTECQualification extends Qualification {
         // ADD ASSIGNMENT TO A UNIT AND CRITERIA ******************************************************
         // **********************************************************************************************
         //$retval .= '<div class="bcgt_col bcgt_admin_right">';
-        $retval = '<div class="bcgt_col">';
+        $retval = '<div class="bcgt_col bcgt_unit_activities">';
         $retval .= '<h2>'.get_string('addunitassignment', 'block_bcgt').'</h2>';
         $retval .= '<div class="bcgt_col bgctSelectActivity">';
         $retval .= '<label for="aID">'.get_string('selectunit', 'block_bcgt').' : </label>';
@@ -930,16 +1387,33 @@ class BTECQualification extends Qualification {
         }
         $retval .= '</select>';
         $retval .= '</div>';
+        $retval .= '<div class="currentUnitActivities currentSelections">';
         $retval .= '<h3>'.get_string('currentactivities', 'block_bcgt').'</h3>';
+        
+        //want the due date and the icon. 
+        $modLinking = load_bcgt_mod_linking();
+        $modIcons = load_mod_icons($courseID, -1, -1, -1);
+        
         //load the assignments already on this unit. 
         $unitActivities = BTECQualification::get_unit_activities($courseID, $unitID);
         if($unitActivities)
         {
+            //sort them
+            foreach($unitActivities AS $unitActivity)
+            {
+                $dueDate = get_bcgt_mod_due_date($unitActivity->id, $unitActivity->instanceid, $unitActivity->cmodule, $modLinking);
+                $unitActivity->dueDate = $dueDate; 
+            }
+            
+            require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+            $modSorter = new ModSorter();
+            usort($unitActivities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+            
             foreach($unitActivities AS $unitActivity)
             {
                 $retval .= '<div class="bcgt_col bgctActivityUnit">';
                 //get the activity and the criteria
-                $retval .= get_btec_unit_activity_table($unitActivity->id, $unit, $courseID);
+                $retval .= get_btec_unit_activity_table($unitActivity->id, $unit, $courseID, false, $unitActivity, $modLinking, $modIcons);
                 $retval .= '</div>';
             }
         }
@@ -947,6 +1421,7 @@ class BTECQualification extends Qualification {
         {
             $retval .= get_string('noactivitiesunit','block_bcgt');
         }
+        $retval .= '</div>';
         $retval .= '<h3>'.get_string('addactivity','block_bcgt').'</h3>';
         //do we have any to remove?
         $finActivities = '';
@@ -989,7 +1464,7 @@ class BTECQualification extends Qualification {
             {
                 if(!in_array($activity->id, $newActvities) && !array_key_exists($activity->id, $unitActivities))
                 {
-                    $retval .= '<option value="'.$activity->id.'">'.$activity->name.'</option>';
+                    $retval .= '<option value="'.$activity->id.'">'.$activity->name.' ('.$activity->module.')</option>';
                 }
             }
         }
@@ -1009,7 +1484,7 @@ class BTECQualification extends Qualification {
             $retval .= get_btec_unit_activity_table($newActivityID, $unit, $courseID, true);
             $retval .= '</div>';
         }
-        $retval .= '<br /><br /><input type="submit" name="saveAccUnits" value="'.get_string('saveassignment','block_bcgt').'"/>';
+        $retval .= '<br /><br /><input type="submit" class="save" name="saveAccUnits" value="'.get_string('saveassignment','block_bcgt').'"/>';
         $retval .= '</div>'; 
         $retval .= '</div>'; 
         
@@ -1494,6 +1969,289 @@ class BTECQualification extends Qualification {
         
     }
     
+    public function display_activity_grid($activities)
+    {
+        global $COURSE, $PAGE, $CFG;
+        $retval = '<div>';
+        $retval .= '<div class="bcgtgridbuttons">';
+        $retval .= "<input type='submit' id='viewsimple' class='gridbuttonswitch viewsimple' name='viewsimple' value='View Simple'/>";
+        $retval .= "<input type='submit' id='viewadvanced' class='gridbuttonswitch viewadvanced' name='viewadvanced' value='View Advanced'/>";
+        $retval .= "<br>";
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $groupingID = optional_param('grID', -1, PARAM_INT);
+        $scID = optional_param('scID', -1, PARAM_INT);
+        $qualID = optional_param('qID', -1, PARAM_INT);
+        //this is actually the coursemoduleid
+        $cmID = optional_param('cmID', -1, PARAM_INT);
+        $context = context_course::instance($COURSE->id);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }
+        if(has_capability('block/bcgt:editunitgrid', $context))
+        {	
+            $retval .= "<input type='submit' id='editsimple' class='gridbuttonswitch editsimple' name='editsimple' value='Edit Simple'/>";
+            $retval .= "<input type='submit' id='editadvanced' class='gridbuttonswitch editadvanced' name='editadvanced' value='Edit Advanced'/>"; 
+        }
+        $late = optional_param('late', false, PARAM_BOOL);
+        $grid = optional_param('g', 's', PARAM_TEXT);
+        $retval .= '<input type="hidden" id="grid" name="g" value="'.$grid.'"/>';
+        $editing = false;
+        if($grid == 'ae' || $grid == 'se')
+        {
+            $editing = true;
+        }
+//        if($grid == 's' && has_capability('block/bcgt:viewbteclatetracking', $context))
+//        {
+//            $retval .= '<br /><span id="showLateFunc">Show Late History : ';
+//            $retval .= '<input type="checkbox" name="late" id="showlate"';
+//            if($late)
+//            {
+//                $retval .= ' checked="checked" ';
+//            }
+//            $retval .= '/></span>';
+//        }
+        
+        $page = optional_param('page', 1, PARAM_INT);
+        $pageRecords = get_config('bcgt','pagingnumber');
+        if($pageRecords != 0)
+        {
+            //then we are paging
+            //need to count the total number of students and divide by the paging number
+            //load the session object
+            //load the students that are on this unit for this qual. 
+            //need to add this to the array
+            $studentsArray = bcgt_get_users_on_coursemodules($this->id,$scID, $groupingID, $cmID);
+            $this->students = $studentsArray;
+            $totalNoStudents = count($studentsArray);
+            $noPages = ceil($totalNoStudents/$pageRecords);
+            $retval .= '<div class="bcgt_pagination">'.get_string('pagenumber', 'block_bcgt').' : ';
+                
+                for ($i = 1; $i <= $noPages; $i++)
+                {
+                    $class = ($i == 1) ? 'active' : '';
+                    $retval .= "<a class='unitgridpage pageNumber {$class}' page='{$i}' href='#&page={$i}'>{$i}</a>";
+                }
+            
+            $retval .= '</div>';
+        }
+        $retval .= '<input type="hidden" name="pageInput" id="pageInput" value="'.$page.'"/>';
+        if(has_capability('block/bcgt:viewajaxrequestdata', $context))
+        {
+            $retval .= '<ul>';
+            $retval .= '<li><a target="_blank" href="'.$CFG->wwwroot.'/blocks/bcgt/plugins/bcgtbtec/ajax/get_act_grid.php?qID='.$this->id.'&g='.$grid.'&page='.$page.'&cmID='.$cmID.'&html=true">'.get_string('ajaxrequest', 'block_bcgt').'</a></li>';
+            $retval .= '</ul>';
+
+        }
+        //we need to work out how many columns are being locked and
+        //what the widths are
+        //default is columns (assignments, comments)
+        $columnsLocked = 2;
+        $configColumns = get_config('bcgt','btecgridcolumns');
+        if($configColumns)
+        {
+            $columns = explode(",",$configColumns);
+            $columnsLocked += count($columns);
+        }
+        else
+        {
+            $columnsLocked += count($this->defaultColumns);
+        }
+        $configColumnWidth = get_config('bcgt','bteclockedcolumnswidth');
+        $jsModule = array(
+            'name'     => 'mod_bcgtbtec',
+            'fullpath' => '/blocks/bcgt/plugins/bcgtbtec/js/bcgtbtec.js',
+            'requires' => array('base', 'io', 'node', 'json', 'event', 'button')
+        );
+        $PAGE->requires->js_init_call('M.mod_bcgtbtec.initactgrid', array($this->id,$grid,$scID, $groupingID, $columnsLocked, $configColumnWidth, $cmID), true, $jsModule);
+        require_once($CFG->dirroot.'/blocks/bcgt/lib.php');
+        load_javascript(true);
+        $retval .= "<link rel='stylesheet' type='text/css' href='{$CFG->wwwroot}/blocks/bcgt/css/start/jquery-ui-1.10.3.custom.min.css' />";
+        $retval .= '</div>'; //bcgtgridbuttons
+        $retval .= "
+		<div class='gridKey adminRight'>";
+        $retval .= "<h2>Key</h2>";
+        //Are we looking at a student or just the actual criteria for the grid.
+        //if students then get the key that tells everyone what things stand for
+        $retval .= BTECQualification::get_grid_key();
+		$retval .= "</div>";
+        
+        //the grid -> ajax
+        $retval .= '<div id="btecActGrid">';
+        
+        
+        $retval .= "<div id='actGridDiv' class='actGridDiv ".
+        $grid."ActGrid tableDiv'><table align='center' class='act_grid".
+                $grid."FixedTables' id='BTECActGrid'>";
+		$headerObj = $this->get_act_grid_header($activities, $grid);
+		$header = $headerObj->header;	
+		$retval .= $header;
+        
+		$retval .= "<tbody>";
+        //the body is loaded through an ajax call
+        $retval .= "</tbody>";
+        $retval .= "</table>";
+        $retval .= "</div>";        
+        $retval .= '</div>';
+        $retval .= '</div>';
+        //Edit/Advanced etc options
+    
+        //four buttons. On click it needs to resubmit the table draw. 
+        //and it needs to potentially redraw the key? 
+        //Grid with a key
+
+        
+        
+        //the buttons.
+        return $retval;
+    }
+    
+    public function get_act_grid_data($advancedMode, 
+            $editing)
+    {
+        //get the activities that we are looking at
+        //activities = $this->activities
+        
+        //get the students:
+        //students = $this->activityStudents 
+        //foreach students
+        //foreach activity
+        //foreach unit on the activity
+        //is the student doing the unit?
+        //for each criteria
+        //output students marks. 
+        
+        $studentsArray = $this->students;
+        $activities = $this->activities;
+        
+        //pagig
+        $pageNumber = optional_param('page',1,PARAM_INT);
+        global $CFG, $DB, $COURSE;
+        $context = context_course::instance($COURSE->id);
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }        
+        //need to get the order:
+        $order = optional_param('order', 'btec', PARAM_TEXT);
+        if($order == 'act')
+        {
+            //get the full list of criteriaNames
+            $criteriaNames = $this->criteriaNamesUsedAct;
+        }
+        else
+        {
+            $criteriaNames = $this->get_used_criteria_names();
+            //Get this units criteria names and sort them. 
+            require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/CriteriaSorter.class.php');
+            $criteriaSorter = new CriteriaSorter();
+            usort($criteriaNames, array($criteriaSorter, "ComparisonDelegateByArrayNameLetters"));
+        }
+        
+        $retArray = array();
+        $possibleValues = null;
+        if(!isset($this->possibleValues) && $editing && $advancedMode)
+        {
+            $possibleValues = BTECQualification::get_possible_values(BTECQualification::ID);
+            $this->possibleValues = $possibleValues;
+        }
+        if(get_config('bcgt','pagingnumber') != 0)
+        {
+            $pageRecords = get_config('bcgt','pagingnumber');
+            //then we only want a certain number!
+            //we also need to take into account the page number we are on.
+            //studentsArray is the array of students on the unit on this qual. 
+            //the keys are the ids of the students. 
+            $keys = array_keys($studentsArray);
+            //arrays keys returns an array of the keys of the first aray. This return aray has its keys set to 
+            //the numerical order, e.g. always starting at 0, then 1 etc.  
+            
+            $studentsShowArray = array();
+            //are we at the first page, 
+            if($pageNumber == 1)
+            {
+               $i = 0; 
+            }
+            else
+            {
+                //no so we want to start at the page number times by how many we show per page
+                $i = ($pageRecords * ($pageNumber - 1)) + ($pageNumber - 1);
+            }
+            //we want to loop over and only show the number of students in our page size. 
+            $recordsEnd = ($i + $pageRecords);
+            for($i;$i<=$recordsEnd;$i++)
+            {
+                //gets the student object from the array by the key that we are looking at.
+                if (isset($keys[$i]) && isset($studentsArray[$keys[$i]]))
+                {
+                    //so, if we have the student id for the nth student we need. 
+                    //then find the student that that id coresponds to from our original array of students. 
+                    $student = $studentsArray[$keys[$i]];
+                    //add this student to the array that we want to display.
+                    $studentsShowArray[$keys[$i]] = $student;
+                }
+            }
+        }
+        else {
+            $studentsShowArray = $studentsArray;
+        }
+        $rowCount = 0;
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELALL;
+        $loadParams->loadAward = true;
+        foreach($studentsShowArray AS $student)
+        {
+            $this->studentID = $student->id;
+            //cant recall why I have two empty cells at the beginning. 
+            $row = array();  
+            $row[] = '';
+            $row[] = '';
+            $rowCount++;
+            $countProcessed = 0;
+            
+            $row = $this->build_unit_grid_students_details($student, $this->id, 
+                    $row, $context);
+            foreach($activities AS $activity)
+            {
+                $countProcessed++;
+                $activityUnits = $activity->unitcriteria;
+                foreach($activityUnits AS $unitID => $criterias)
+                {
+                    $userUnit = $this->units[$unitID];
+                    $userUnit->load_student_information($student->id, $this->id, $loadParams);
+                    if($userUnit->is_student_doing())
+                    {
+                        //criteria were sorted on the header. 
+                        foreach($criterias AS $criteriaID => $criteriaName)
+                        {
+                            $userCriteria = $userUnit->get_single_criteria($criteriaID);
+                            
+                            $retval = $this->set_up_criteria_grid($userCriteria, '', 
+                                                $possibleValues, $editing, $advancedMode, false, $userUnit, 0, $student);
+                            $row[] = $retval;
+                        }
+                    }
+                    else
+                    {
+                        //user isnt doing unit
+                        //but we still need to ouput empty
+                        foreach($criterias AS $criteria)
+                        {
+                            $row[] = '';
+                        }
+                    }
+                }
+                if(count($activities) != $countProcessed)
+                {
+                    $row[] = '';
+                }
+            }
+            $retArray[] = $row;
+        }
+        return $retArray;
+    }
+    
     public function display_student_grid($fullGridView = true, $studentView = true)
     {
         return $this->display_student_grid_btec($fullGridView, $studentView);
@@ -1501,7 +2259,150 @@ class BTECQualification extends Qualification {
     
     public function display_subject_grid()
     {
-        return "";
+        //we need the header:
+        //this will be the list of units
+        //plus the usual key. 
+        global $COURSE, $PAGE, $CFG, $OUTPUT;
+        $grid = optional_param('g', 's', PARAM_TEXT);
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $sCourseID = optional_param('scID', -1, PARAM_INT);
+        $context = context_course::instance($COURSE->id);
+        $groupingID = optional_param('grID', -1, PARAM_INT);
+        $basicView = optional_param('basic',false, PARAM_BOOL);
+        $retval = '<div>';//overall subject wrapper
+
+        if ($basicView)
+        {
+//            $retval .= "<p class='c'><a href='".$CFG->wwwroot."/blocks/bcgt/grids/print_grid.php?sID={$this->studentID}&qID={$this->id}' target='_blank'><img src='".$OUTPUT->pix_url('t/print', 'core')."' alt='' /> ".get_string('printgrid', 'block_bcgt')."</a></p>";
+        }
+        
+        $retval .= '<input type="hidden" id="grid" name="g" value="'.$grid.'"/>';        
+        $editing = false;
+        $advancedMode = false;
+        if($grid == 'ae' || $grid == 'se')
+        {
+            $editing = true;
+        }
+        if($grid == 'a' || $grid == 'ae')
+        {
+            $advancedMode = true;
+        }    
+        $columnsLocked = 0;
+        $configColumns = get_config('bcgt','btecgridcolumns');
+        if($configColumns)
+        {
+            $columns = explode(",",$configColumns);
+            $columnsLocked += count($columns);
+        }
+        else
+        {
+            $columnsLocked += count($this->defaultColumns);
+        }
+        $configColumnWidth = get_config('bcgt','bteclockedcolumnswidthclass');
+        //
+        if(has_capability('block/bcgt:viewbtecavggrade', $context))
+        {
+            $columnsLocked++;
+        }
+        $jsModule = array(
+            'name'     => 'mod_bcgtbtec',
+            'fullpath' => '/blocks/bcgt/plugins/bcgtbtec/js/bcgtbtec.js',
+            'requires' => array('base', 'io', 'node', 'json', 'event', 'button')
+        );
+        
+        if ($basicView){
+            $retval .= <<< JS
+            <script type='text/javascript' src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/js/bcgtbtec.js'></script>
+JS;
+        } else {
+            //courseID, columnsLocked, configColumnWidth, groupID
+            $PAGE->requires->js_init_call('M.mod_bcgtbtec.initclassgrid', array($this->id, $columnsLocked, $configColumnWidth), true, $jsModule);
+        }
+        
+        require_once($CFG->dirroot.'/blocks/bcgt/lib.php');
+        $retval .= load_javascript(true, $basicView);
+        $retval .= "<link rel='stylesheet' type='text/css' href='{$CFG->wwwroot}/blocks/bcgt/css/start/jquery-ui-1.10.3.custom.min.css' />";
+        
+        $retval .= '<div>';
+        $retval .= '<div class="bcgtgridbuttons">';
+        $retval .= "<input type='submit' id='viewsimple' class='gridbuttonswitch viewsimple' name='viewsimple' value='View Simple'/>";
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }
+        else
+        {
+            $context = context_course::instance($COURSE->id);
+        }
+        if(has_capability('block/bcgt:editunitgrid', $context))
+        {	
+            $retval .= "<input type='submit' id='editsimple' class='gridbuttonswitch editsimple' name='editsimple' value='Edit Simple'/>";
+        }
+        $studentsArray = $this->load_users('student', false, null, $sCourseID, $groupingID);
+        $page = optional_param('page', 1, PARAM_INT);
+        $pageRecords = get_config('bcgt','pagingnumber');
+        if($pageRecords != 0)
+        {
+            
+            //then we are paging
+            //need to count the total number of students and divide by the paging number
+            //load the session object
+            //load the students that are on this unit for this qual.
+            //have we already loaded the students?
+            $totalNoStudents = count($studentsArray);
+            $noPages = ceil($totalNoStudents/$pageRecords);
+            $retval .= '<div class="bcgt_pagination">'.get_string('pagenumber', 'block_bcgt').' : ';
+                
+                for ($i = 1; $i <= $noPages; $i++)
+                {
+                    $class = ($i == 1) ? 'active' : '';
+                    $retval .= "<a class='classgridpage pageNumber {$class}' page='{$i}' href='#&page={$i}'>{$i}</a>";
+                }
+            
+            $retval .= '</div>';
+        }
+        $retval .= '<input type="hidden" name="pageInput" id="pageInput" value="'.$page.'"/>';
+        if(has_capability('block/bcgt:viewajaxrequestdata', $context))
+        {
+            $retval .= '<ul>';
+            $retval .= '<li><a target="_blank" href="'.$CFG->wwwroot.'/blocks/bcgt/plugins/bcgtbtec/ajax/get_class_grid.php?qID='.$this->id.'&grID='.$groupingID.'&g='.$grid.'">'.get_string('ajaxrequest', 'block_bcgt').'</a></li>';
+            $retval .= '</ul>';
+
+        }
+        $retval .= '</div>'; //bcgtgridbuttons
+        $retval .=  '</div>';//end the wrapper of the key and buttons. 
+        
+        //the grid -> ajax
+        $retval .= '<div id="btecClassGrid">';
+        $retval .= "<div id='classGridDiv' class='classGridDiv ".
+        $grid."ClassGrid tableDiv'><table align='center' class='class_grid".
+                $grid."FixedTables' id='BTECClassGrid'>";
+        
+		//we will reuse the header at the bottom of the table.
+        
+		$headerObj = $this->get_class_grid_header($grid);
+		$header = $headerObj->header;	
+		$retval .= $header;
+		$retval .= "<tbody>";
+        //the body is loaded through an ajax call. This ajax call
+        //is called in the js file of bcgtbtec.js and is in the initstdentgrid
+        //it calls ajax and calls ajax/get_class_grid.php
+        $retval .= "</tbody>";
+        $retval .= "</table>";
+        
+        
+        $retval .= "</div>";
+        $retval .= '</div>';
+        $retval .= '</div>';////end overall subject wrapper
+        
+        if ($basicView){
+            $retval .= " <script>$(document).ready( function(){
+                M.mod_bcgtbtec.initclassgrid(Y, {$this->id}, {$this->studentID}, '{$grid}');
+            } ); </script> ";
+        }
+        
+        return $retval;
+
     }
     
     public function get_family_instance_id()
@@ -1526,6 +2427,11 @@ class BTECQualification extends Qualification {
         $late = optional_param('late', false, PARAM_BOOL);
         $courseID = optional_param('cID', -1, PARAM_INT);
         $context = context_course::instance($COURSE->id);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        }
+            
                 
         $retval = '<div>';
                 
@@ -1569,14 +2475,22 @@ class BTECQualification extends Qualification {
                 }
                 $retval .= '/></span>';
             }
+            $order = optional_param('order', 'spec', PARAM_TEXT);
+            //do we have any activities on this unit?
+            if($activities = bcgt_user_activities($this->id, $this->studentID, -1))
+            {
+                $this->activities = $activities;
+                $this->activityids = array_keys($activities);
+            }
             if(has_capability('block/bcgt:viewajaxrequestdata', $context))
             {
                 $retval .= '<ul>';
-                $retval .= '<li><a target="_blank" href="'.$CFG->wwwroot.'/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID='.$this->id.'&sID='.$this->studentID.'&g='.$grid.'">'.get_string('ajaxrequest', 'block_bcgt').'</a></li>';
+                $retval .= '<li><a target="_blank" href="'.$CFG->wwwroot.
+                        '/blocks/bcgt/plugins/bcgtbtec/ajax/get_student_grid.php?qID='.
+                        $this->id.'&sID='.$this->studentID.'&g='.$grid.'&order='.
+                        $order.'">'.get_string('ajaxrequest', 'block_bcgt').'</a></li>';
                 $retval .= '</ul>';
-                
-            }
-        
+            }        
         }
         
         $jsModule = array(
@@ -1620,6 +2534,7 @@ JS;
 		$totalCredits = $this->get_students_total_credits($studentView);
 		//for all of the units on this qual, lets check which crieria names
 		//have actually been used. i.e. dont show P17 if no unit has a p17
+        
 		$criteriaNames = $this->get_used_criteria_names();
         require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/CriteriaSorter.class.php');
         $criteriaSorter = new CriteriaSorter();
@@ -1690,21 +2605,48 @@ JS;
     
     protected function get_grid_global_buttons($courseID)
     {
+        global $COURSE;
         $retval = '<div class="bcgtgridbuttons">';
         $retval .= "<input type='submit' id='viewsimple' class='gridbuttonswitch viewsimple' name='viewsimple' value='View Simple'/>";
         $retval .= "<input type='submit' id='viewadvanced' class='gridbuttonswitch viewadvanced' name='viewadvanced' value='View Advanced'/>";
         $retval .= "<br>";  
-
+        $context = context_course::instance($COURSE->id);
         if($courseID != -1)
         {
             $context = context_course::instance($courseID);
-            if(has_capability('block/bcgt:editstudentgrid', $context))
-            {	
-                $retval .= "<input type='submit' id='editsimple' class='gridbuttonswitch editsimple' name='editsimple' value='Edit Simple'/>";
-                $retval .= "<input type='submit' id='editadvanced' class='gridbuttonswitch editadvanced' name='editadvanced' value='Edit Advanced'/>"; 
-            }
         }
         
+        if(has_capability('block/bcgt:editstudentgrid', $context))
+        {	
+            $retval .= "<input type='submit' id='editsimple' class='gridbuttonswitch editsimple' name='editsimple' value='Edit Simple'/>";
+            $retval .= "<input type='submit' id='editadvanced' class='gridbuttonswitch editadvanced' name='editadvanced' value='Edit Advanced'/>"; 
+        }
+        
+        return $retval;
+    }
+    
+    protected function get_grid_assignment_overview_buttons($tab, $cID)
+    {
+        $retval = '<div class="tabs"><div class="tabtree">';
+        $retval.= '<ul class="tabrow0">';
+        $focus = ($tab == 'os')? 'focus' : '';
+        $retval.= '<li class="first '.$focus.'">'.
+                '<a href="?view=os&cID='.$cID.'&tab=acheck">'.
+                '<span>'.get_string('overviewsimple', 'block_bcgt').'</span></a></li>';
+        $focus = ($tab == 'oa')? 'focus' : '';
+        $retval.= '<li class="last '.$focus.'">'.
+                '<a href="?view=oa&cID='.$cID.'&tab=acheck">'.
+                '<span>'.get_string('overviewadvanced', 'block_bcgt').'</span></a></li>';
+        $focus = ($tab == 'subatt')? 'focus' : '';
+        $retval.= '<li class="last '.$focus.'">'.
+                '<a href="?view=subatt&cID='.$cID.'&tab=acheck">'.
+                '<span>'.get_string('submissionsattempted', 'block_bcgt').'</span></a></li>';
+        $focus = ($tab == 'subach')? 'focus' : '';
+        $retval.= '<li class="last '.$focus.'">'.
+                '<a href="?view=subach&cID='.$cID.'&tab=acheck">'.
+                '<span>'.get_string('submissionsachieved', 'block_bcgt').'</span></a></li>';
+        $retval.= '</ul>';
+        $retval.= '</div></div>';
         return $retval;
     }
     
@@ -1760,6 +2702,11 @@ JS;
         return true;
     }
     
+    public function has_final_award()
+    {
+        return true;
+    }
+    
 	protected function show_predicted_qual_award($studentAward, $context, $totalCredits)
 	{
         $warningClass = '';
@@ -1807,12 +2754,25 @@ JS;
                     '</td><td><span id="maxAward" class="'.$warningClass.'">'.$maxAward.'</span></td></tr>';
         }
         
-        if(has_capability('block/bcgt:viewbtecavggrade', $context))
+        if($this->has_final_award() && has_capability('block/bcgt:viewbtecavggrade', $context))
         {
+            //are the predicted and final different?
+            if($this->studentAward && $this->predictedAward && 
+                    ($this->studentAward->get_award() != $this->predictedAward->get_award()))
+            {
+                //we need to recalculate
+                $this->calculate_qual_award(false);
+            }
+            
             $retval .= "<tr><td>";
             $type = get_string('predictedavgaward','block_bcgt');
             $award = 'N/A';
-            if($studentAward && $studentAward->averageAward)
+            if($studentAward && isset($studentAward->final))
+            {
+                $award = $studentAward->final->get_award();
+                $retval .= "<span id='qualAwardType'>$type</span></td><td><span id='qualAward' class='".$warningClass."'>".$award."</span></td>";	
+            }
+            elseif($studentAward && isset($studentAward->averageAward))
             {
                 switch($studentAward->averageAward->get_type())
                 {
@@ -1824,11 +2784,23 @@ JS;
                         break;
                 }
                 $award = $studentAward->averageAward->get_award();
-                $retval .= "<span id='qualAwardType'>$type</span></td><td><span id='qualAward' class='".$warningClass."'>".$award."</span></td>";      
-            } 
-
+                $retval .= "<span id='qualAwardType'>$type</span></td><td><span id='qualAward' class='".$warningClass."'>".$award."</span></td>";	
+            }
+            elseif($studentAward && isset($studentAward->award))
+            {
+                $retval .= "<span id='qualAwardType'>$type</span></td><td>".
+                        "<span id='qualAward' class='".$warningClass."'>$studentAward->award</span></td>";
+            }
+            elseif($this->studentAward)
+            {
+                //interestingly it nearly always goes here
+                $predAward = $this->studentAward->get_award();
+                $retval .= "<span id='qualAwardType'>$type</span></td><td>".
+                        "<span id='qualAward' class='".$warningClass."'>$predAward</span></td>";
+            }
             elseif($this->predictedAward)
             {
+                ///or here!!
                 $predAward = $this->predictedAward->get_award();
                 $retval .= "<span id='qualAwardType'>$type</span></td><td>".
                         "<span id='qualAward' class='".$warningClass."'>$predAward</span></td>";
@@ -1924,258 +2896,849 @@ JS;
         {
             $unitAwards = Unit::get_possible_unit_awards($this->get_class_ID());
         }
-        $rowCount = 0;
-        foreach($units AS $unit)
-		{
-			if(($studentView && $unit->is_student_doing()) || !$studentView)
-			{	
-                $rowArray = array();
-				//Are we looking at the student? 
-				//Is the student doing the unit. 
-				//If they are not then we dont want to show the unit. 
-				$rowClass = 'rO';
-				if($rowCount % 2)
-				{
-					$rowClass = 'rE';
-				}
-                
-				$award = 'N/S';
-				$rank = 'nr';
-                $shortAward = null;
-				if($studentView)
-				{
-					//get the users award from the unit
-					$unitAward = $unit->get_user_award();
-					if($unitAward)
-					{
-						$rank = $unitAward->get_rank();
-						$award = $unitAward->get_award();
-                        $shortAward = $unitAward->get_short_award();
-					}	
-				}
-				
-				$extraClass = '';
-				if($rowCount == 1)
-				{
-					$extraClass = 'firstRow';
-				}
-				elseif($rowCount == count($units))
-				{
-					$extraClass = 'lastRow';
-				}
-				//the row class
-				//$retval .= "<tr class='$rowClass $extraClass ".$unit->get_unit_type()." prU".$unit->get_id()."' id='".$unit->get_id()."'>";
-                
-                //the first json value
-                //$retval .= '<td></td>';
-                $rowArray[] = '';
-				
-                // Unit Comment
-                $getComments = $unit->get_comments();
-                
-                $cellID = "cmtCell_U_{$unit->get_id()}_S_{$user->id}_Q_{$this->get_id()}";
-                
-		        
-                $username = htmlentities( $user->username, ENT_QUOTES );
-                $fullname = htmlentities( fullname($user), ENT_QUOTES );
-                $unitname = htmlentities( $unit->get_name(), ENT_QUOTES);
-                $critname = "N/A";   
-                
-                $retval = "";
-
-                if($advancedMode && $editing)
+        
+        $order = optional_param('order', 'spec', PARAM_TEXT);
+        if($order == 'actunit' || $order == 'unitact')
+        {
+            //then we are showing all of the activities
+            //and all of the units on those activities. 
+            $activities = $this->activities;
+            
+            if(!isset($this->modLinking))
+            {
+                $modLinking = load_bcgt_mod_linking();
+                $this->modLinking = $modLinking;
+            }
+            if(!isset($this->dueDateActivitySorted) || !$this->dueDateActivitySorted)
+            {
+                //only want to do it once. 
+                //get the due dates of the activities
+                foreach($activities AS $activity)
                 {
+                    $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
+                    $activity->dueDate = $dueDate;
+                }
+                require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/ModSorter.class.php');
+                $modSorter = new ModSorter();
+                //uasort keeps the keys. 
+                uasort ($activities, array($modSorter, "ComparisonDelegateByDueDateObj"));
+                $this->activities = $activities;
+                
+                $this->dueDateActivitySorted = true;
+            }
+            if(!isset($this->modIcons))
+            {
+                $modIcons = load_mod_icons(-1, $this->id, -1, -1);
+                $this->modIcons = $modIcons;
+            }
+            if(!isset($this->userActivityUnitsSelection))
+            {
+                $byUnit = false;
+                if($order == 'unitact')
+                {
+                    $byUnit = true;
+                }
+                $this->load_user_activity_unit_selection($byUnit);
+            }
+            $activiySelection = $this->userActivityUnitsSelection;
+            //now need to output them.
+        }
+        $rowCount = 0;
+        if($order == 'actunit')
+        {
+            foreach($activities AS $activity)
+            {
+                $rowArray = array();
+                $rowClass = 'rO';
+                if($rowCount % 2)
+                {
+                    $rowClass = 'rE';
+                }
+                //icon, 
+                //activiyName
+                //due date
+                $iconDisplay = '';
+                $modIcons = $this->modIcons;
+                if(array_key_exists($activity->module,$modIcons))
+                {
+                    $icon = $modIcons[$activity->module];
+                    //show the icon. 
+                    $iconDisplay .= html_writer::empty_tag('img', array('src' => $icon,
+                                'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                }
+                $rowArray[] = $iconDisplay;
+                $rowArray[] = $activity->name;
+                $dueDate = '';
+                if(isset($activity->dueDate))
+                {
+                    $dueDate = date('d M Y : H:m', $activity->dueDate); 
+                }
+                $rowArray[] = $dueDate;
+                //then its the units
+                
+                //so get each unit, that this user is doing
+                //that is on this activity. 
+                $activityUnitsCount = 0;
+                if(array_key_exists($activity->id, $activiySelection))
+                {
+                    $activityUnits = $activiySelection[$activity->id];
+                    $activityUnitsCount = count($activityUnits);
+                    //probably need to reorder these units by their names!
+                    foreach($activityUnits AS $unitID => $criterias)
+                    {
+                        //we want a table cell per unit
+                        $userUnit = $this->units[$unitID];
+                        $cellContent = '';
+                        $cellContent .= '<table>';
+                        $cellContent .= '<thead>';
+                        $cellContent .= '<tr>';
+                        $multiplier = 1;
+                        if($advancedMode && $editing)
+                        {
+                            $multiplier = 2;
+                        }
+                        $cellContent .= '<th colspan="'.(count($criterias)*$multiplier).'">';
+                        $cellContent .= $userUnit->get_name(); 
+                        $cellContent .= '</th>';
+                        $cellContent .= '</tr>';
+                        $cellContent .= '<tr>';
+                        $bodyRow = '';
+                        //probably need to reorder the criteria. 
+                        foreach($criterias AS $criteriaID)
+                        {
+                            $userCriteria = $userUnit->get_single_criteria($criteriaID);
+                            $cellContent .= '<th>'.$userCriteria->get_name().'</th>';
+                            if($advancedMode && $editing)
+                            {
+                                //if its advanced and editing then we have the extra 
+                                //cell required for the add/edit comments. 
+                                $cellContent .= "<th class='blankHeader'></th>";
+                            }
+                            //this then gets the users value. 
+                            $bodyRow .= '<td>';
+                            $retval = $this->set_up_criteria_grid($userCriteria, '', 
+                                        $possibleValues, $editing, $advancedMode, false, $userUnit, 0, $user);
+                            $bodyRow .= $retval;
+                            $bodyRow .= '</td>';
+                        }
+                        $cellContent .= '</tr>';
+                        $cellContent .= '</thead>';
+                        $cellContent .= '<tbody>';
+                        $cellContent .= '<tr>';
+                        $cellContent .= $bodyRow;
+                        $cellContent .= '</tr>';
+                        $cellContent .= '</tbody>';
+                        $cellContent .= '</table>';
+                        $rowArray[] = '<span>'.$cellContent.'</span>';
+                    }
+                }
+                
+                
+                //then we need to match the total possible number of units
+                //with the umber of units that are on this activity
+                //so the table matches.
+                if(!isset($this->maxNoUnits))
+                {
+                    //then go and get them. 
+                    $activityIDs = array_keys($this->activities);
+                    //but is the user doing all of the units?
+                    $maxNoUnits = bcgt_get_max_units_activity($activityIDs, $this->studentID);
+                    $this->maxNoUnits = $maxNoUnits;
+                }
+                $cellsRemaining = $this->maxNoUnits->maxcount - $activityUnitsCount;
+                for($i=0;$i<$cellsRemaining;$i++)
+                {
+                    $rowArray[] = '';
+                }
+                
+                //a table for each
+                //the unit name
+                //the criteria names
+                //the users values. 
+                $rowsArray[] = $rowArray;
+            }
+        }
+        else
+        {
+            foreach($units AS $unit)
+            {
+                if(($studentView && $unit->is_student_doing()) || !$studentView)
+                {	
+                    $rowArray = array();
+                    //Are we looking at the student? 
+                    //Is the student doing the unit. 
+                    //If they are not then we dont want to show the unit. 
+                    $rowClass = 'rO';
+                    if($rowCount % 2)
+                    {
+                        $rowClass = 'rE';
+                    }
 
-                    if(!empty($getComments))
-                    {                
-                        $retval .= "<img id='{$cellID}' grid='student' username='{$username}' fullname='{$fullname}' unitname='{$unitname}' critname='{$critname}' type='button' class='editCommentsUnit' title='Click to Edit Unit Comments' src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/comments.jpg' />";
-                        $retval .= "<div class='tooltipContent'>".nl2br( htmlentities($getComments, ENT_QUOTES) )."</div>";
+                    $award = 'N/S';
+                    $rank = 'nr';
+                    $shortAward = null;
+                    if($studentView)
+                    {
+                        //get the users award from the unit
+                        $unitAward = $unit->get_user_award();
+                        if($unitAward)
+                        {
+                            $rank = $unitAward->get_rank();
+                            $award = $unitAward->get_award();
+                            $shortAward = $unitAward->get_short_award();
+                        }	
+                    }
+
+                    $extraClass = '';
+                    if($rowCount == 1)
+                    {
+                        $extraClass = 'firstRow';
+                    }
+                    elseif($rowCount == count($units))
+                    {
+                        $extraClass = 'lastRow';
+                    }
+                    //the row class
+                    //$retval .= "<tr class='$rowClass $extraClass ".$unit->get_unit_type()." prU".$unit->get_id()."' id='".$unit->get_id()."'>";
+
+                    //the first json value
+                    //$retval .= '<td></td>';
+                    $rowArray[] = '';
+
+                    // Unit Comment
+                    $getComments = $unit->get_comments();
+
+                    $cellID = "cmtCell_U_{$unit->get_id()}_S_{$user->id}_Q_{$this->get_id()}";
+
+
+                    $username = htmlentities( $user->username, ENT_QUOTES );
+                    $fullname = htmlentities( fullname($user), ENT_QUOTES );
+                    $unitname = htmlentities( $unit->get_name(), ENT_QUOTES);
+                    $critname = "N/A";   
+
+                    $retval = "";
+
+                    if($advancedMode && $editing)
+                    {
+
+                        if(!empty($getComments))
+                        {                
+                            $retval .= "<img id='{$cellID}' grid='student' username='{$username}' fullname='{$fullname}' unitname='{$unitname}' critname='{$critname}' type='button' class='editCommentsUnit' title='Click to Edit Unit Comments' src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/comments.jpg' />";
+                            $retval .= "<div class='tooltipContent'>".nl2br( htmlentities($getComments, ENT_QUOTES) )."</div>";
+                        }
+                        else
+                        {                        
+                            $retval .= "<img id='{$cellID}' grid='student' username='{$username}' fullname='{$fullname}' unitname='{$unitname}' critname='{$critname}' type='button' class='addCommentsUnit' title='Click to Add Unit Comment' src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/plus.png' />";
+                        }
+
                     }
                     else
-                    {                        
-                        $retval .= "<img id='{$cellID}' grid='student' username='{$username}' fullname='{$fullname}' unitname='{$unitname}' critname='{$critname}' type='button' class='addCommentsUnit' title='Click to Add Unit Comment' src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/plus.png' />";
+                    {
+                        if(!empty($getComments)){
+                            $retval .= "<img src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/comment-icon.png' class='showCommentsUnit' />";
+                            $retval .= "<div class='tooltipContent'>".nl2br( htmlentities($getComments, ENT_QUOTES) )."</div>";
+                        }
+
+                    }
+                    $rowArray[] = $retval;
+                    // End Unit Comment  
+                    //$retval .= "<td class='unitName r".$unit->get_id()." '>";
+                    $studentID = -1;
+                    if($studentView)
+                    {
+                        //This is used to link to another page.
+                        //if studentID = -1 then we know we are not
+                        //looking at the student but the qual in general
+                        $studentID = $this->studentID;
+                    }
+                    $link = '';
+                    if(has_capability('block/bcgt:editunit', $context))
+                    {
+                        $link = '<a href="'.$CFG->wwwroot.'/blocks/bcgt/grids/'.
+                                'unit_grid.php?uID='.$unit->get_id().
+                                '&qID='.$this->id.'">'.$unit->get_name().'</a>';
+                    }
+                    else
+                    {
+                        $link = $unit->get_name();
+                    }
+                    $retval = "<span id='uID_".$unit->get_id()."' class='uNToolTip unitName".$unit->get_id()."' title=''>".$link."</span>";
+
+                    $retval .= "<span style='color:grey;font-size:85%;'><br />(".$unit->get_credits()." ".$this->get_credits_display_name().")</span>";	
+
+                    //if has capibility
+                    if(has_capability('block/bcgt:editunit', $context))
+                    {		
+                        $retval .= "<a class='editing_update editUnit' href='{$CFG->wwwroot}/blocks/bcgt/forms/edit_unit.php?unitID=".$unit->get_id()."' title = 'Update Unit'>
+                        <img class='iconsmall editUnit' alt='Update Unit' src='".$OUTPUT->pix_url("t/edit", "core")."'/></a>";
                     }
 
-                }
-                else
-                {
-                    if(!empty($getComments)){
-                        $retval .= "<img src='{$CFG->wwwroot}/blocks/bcgt/plugins/bcgtbtec/pix/grid_symbols/comment-icon.png' class='showCommentsUnit' />";
-                        $retval .= "<div class='tooltipContent'>".nl2br( htmlentities($getComments, ENT_QUOTES) )."</div>";
-                    }
-                    
-                }
-                $rowArray[] = $retval;
-                // End Unit Comment  
-                //$retval .= "<td class='unitName r".$unit->get_id()." '>";
-				$studentID = -1;
-				if($studentView)
-				{
-					//This is used to link to another page.
-					//if studentID = -1 then we know we are not
-					//looking at the student but the qual in general
-					$studentID = $this->studentID;
-				}
-                $link = '';
-                if(has_capability('block/bcgt:editunit', $context))
-                {
-                    $link = '<a href="'.$CFG->wwwroot.'/blocks/bcgt/grids/'.
-                            'unit_grid.php?uID='.$unit->get_id().
-                            '&qID='.$this->id.'">'.$unit->get_name().'</a>';
-                }
-                else
-                {
-                    $link = $unit->get_name();
-                }
-				$retval = "<span id='uID_".$unit->get_id()."' class='uNToolTip unitName".$unit->get_id()."' title=''>".$link."</span>";
-				
-                $retval .= "<span style='color:grey;font-size:85%;'><br />(".$unit->get_credits()." ".$this->get_credits_display_name().")</span>";	
-				
-                //if has capibility
-				if(has_capability('block/bcgt:editunit', $context))
-				{		
-                    $retval .= "<a class='editing_update editUnit' href='{$CFG->wwwroot}/blocks/bcgt/forms/edit_unit.php?unitID=".$unit->get_id()."' title = 'Update Unit'>
-					<img class='iconsmall editUnit' alt='Update Unit' src='".$OUTPUT->pix_url("t/edit", "core")."'/></a>";
-				}
-                
-                $retval .= "<img src='".$CFG->wwwroot."/blocks/bcgt/pix/info.png' height='12' width='12' class='uNToolTipInfo' unitID='{$unit->get_id()}' />";
-                
-				//$retval .= "</td>";
-                $rowArray[] = $retval;
-				if($studentView)
-				{
-					if($editing && !$advancedMode)
-					{
-						$retval = $this->edit_unit_award($unit, $rank, $award, $unitAwards, $this->gridLocked);
-                        $rowArray[] = $retval;
-                    }
-					else
-					{
-                        $output = $award;
-                        if($shortAward && $shortAward != '')
+                    $retval .= "<img src='".$CFG->wwwroot."/blocks/bcgt/pix/info.png' height='12' width='12' class='uNToolTipInfo' unitID='{$unit->get_id()}' />";
+
+                    //$retval .= "</td>";
+                    $rowArray[] = $retval;
+                    if($studentView)
+                    {
+                        if($editing && !$advancedMode)
                         {
-                            $output = $shortAward;
+                            $retval = $this->edit_unit_award($unit, $rank, $award, $unitAwards, $this->gridLocked);
+                            $rowArray[] = $retval;
                         }
-						//print out the unit award column
-						//$retval .= "<td id='unitAward_".$unit->get_id()."' class='unitAward r".$unit->get_id()." rank$rank'>".$award."</td>";
-                        $rowArray[] = '<span id="unitAwardAdv_'.$unit->get_id().'">'.$output.'</span>';
+                        else
+                        {
+                            $output = $award;
+                            if($shortAward && $shortAward != '')
+                            {
+                                $output = $shortAward;
+                            }
+                            //print out the unit award column
+                            //$retval .= "<td id='unitAward_".$unit->get_id()."' class='unitAward r".$unit->get_id()." rank$rank'>".$award."</td>";
+                            $rowArray[] = '<span id="unitAwardAdv_'.$unit->get_id().'">'.$output.'</span>';
+                        }
                     }
-				}
-                                
-                // % Completion
-                if($this->has_percentage_completions() && $studentView){
-                    $retval .= "<td id='tdPercentCompleted'>".$unit->display_percentage_completed()."</td>";
-                }
-				
-				if($criteriaNames)
-				{
-					//if we have found the used criteria names. 
-					$criteriaCount = 0;
-					$previousLetter = '';						
-					foreach($criteriaNames AS $criteriaName)
-					{	
-						//TODO
-						$criteriaCount++;
-						$letter = substr($criteriaName, 0, 1);
-						if($previousLetter != '' && $previousLetter != $letter)
-						{
-							//if we have moved from P to M then put the divider in. 
-                            $rowArray[] = "";
-						}
-						$previousLetter = $letter;	
-						
-						if($studentView)
-						{
-							//if its the student view then lets print
-							//out the students unformation
-							if($studentCriteria = $unit->get_single_criteria(-1, $criteriaName))
-							{	
-								$retval = $this->set_up_criteria_grid($studentCriteria, '', 
-                                        $possibleValues, $editing, $advancedMode, false, $unit, 0, $user);
-                                $rowArray[] = $retval;
-								if($subCriteria)
-								{
-									//Get the used Sub Criteria Names from the heading for this criteriaName
-									//for example get the p1.1, P1.2 ect for the P1
-                                    if(array_key_exists($criteriaName, $subCriteriaArray))
+
+                    // % Completion
+                    if($this->has_percentage_completions() && $studentView){
+                        $retval .= "<td id='tdPercentCompleted'>".$unit->display_percentage_completed()."</td>";
+                    }
+
+                    if($order == 'unitact')
+                    {
+                        $unitActivitiesCount = 0;
+                        //need to get all of the activities for this unit. 
+                        //plus all of the criterias
+                        if(array_key_exists($unit->get_id(),$activiySelection))
+                        {
+                            //then we can display it.   
+                            $unitActivitiesCriteria = $activiySelection[$unit->get_id()];
+                            //activities array (set above) has been orderd by due date above
+                            //so i want to keep the order. 
+                            $unitActivityIDs = array_intersect(array_keys($activities), array_keys($unitActivitiesCriteria));
+                            $unitActivitiesCount = count($unitActivitiesCriteria);
+                            //probably need to reorder these units by their names!
+                            foreach($unitActivityIDs AS $id)
+                            {
+                                $activity = $activities[$id];
+                                //does it actually have any  criterias? 
+                                if(!array_key_exists($activity->id, $unitActivitiesCriteria))
+                                {
+                                    //need to remove one from the unitActivitiesCount so it
+                                    //knows to put a blank one in this activities
+                                    //spot
+                                    $unitActivitiesCount--;
+                                    continue;
+                                }
+                                $criterias = $unitActivitiesCriteria[$activity->id];
+                                $cellContent = '<table>';
+                                $cellContent .= '<thead>';
+                                $cellContent .= '<tr>';
+                                $multiplier = 1;
+                                if($advancedMode && $editing)
+                                {
+                                    $multiplier = 2;
+                                }
+                                $cellContent .= '<th colspan="'.(count($criterias)*$multiplier).'"><span>';
+                                if(array_key_exists($activity->module,$modIcons))
+                                {
+                                    $icon = $modIcons[$activity->module];
+                                    //show the icon. 
+                                    $cellContent .= html_writer::empty_tag('img', array('src' => $icon,
+                                                'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                                }
+                                $cellContent .= '</span>';
+                                $cellContent .= '<span>';
+                                $cellContent .= $activity->name;
+                                //the name
+                                $cellContent .= '</span>';
+                                $cellContent .= '<span>';
+                                //the duedate
+                                if(isset($activity->dueDate))
+                                {
+                                    $cellContent .= date('d M Y : H:m', $activity->dueDate); 
+                                }
+                                $cellContent .= '</span>';
+                                $cellContent .= '</tr>';
+                                $subRow = '';
+                                foreach($criterias AS $criteriaID)
+                                {
+                                    $userCriteria = $unit->get_single_criteria($criteriaID);
+                                    $cellContent .= '<th>';
+                                    $cellContent .= $userCriteria->get_name();
+                                    $cellContent .= '</th>';
+                                    if($advancedMode && $editing)
                                     {
-                                        $criteriaSubCriteriasUsed = $subCriteriaArray[$criteriaName];
-                                        //Lets see if this Criteria has the subcriteria that matches the heading
-                                        $cellCount = count($criteriaSubCriteriasUsed);
-                                        $i = 0;
-                                        foreach($criteriaSubCriteriasUsed AS $subCriteriaUsed)
+                                        //if its advanced and editing then we have the extra 
+                                        //cell required for the add/edit comments. 
+                                        $cellContent .= "<th class='blankHeader'></th>";
+                                    }
+                                    $subRow .= '<td>';
+                                    $retval = $this->set_up_criteria_grid($userCriteria, '', 
+                                                $possibleValues, $editing, $advancedMode, false, $unit, 0, $user);
+                                    $subRow .= $retval;
+                                    $subRow .= '</td>';
+                                }
+                                $cellContent .= '</thead>';
+                                $cellContent .= '<tbody>';
+                                $cellContent .= '<tr>'.$subRow.'</tr>';
+                                $cellContent .= '</tbody>';
+                                $cellContent .= '</table>';
+                                $rowArray[] = '<span>'.$cellContent.'</span>';
+                            }
+                        }
+                        
+                        //now need to fill the table with empty remaining cells
+                        $cellsRemaining = $this->maxNoActivities->maxcount - $unitActivitiesCount;
+                        for($i=0;$i<$cellsRemaining;$i++)
+                        {
+                            $rowArray[] = '';
+                        }
+                    }
+                    else
+                    {
+                        if($criteriaNames)
+                        {
+                            //if we have found the used criteria names. 
+                            $criteriaCount = 0;
+                            $previousLetter = '';						
+                            foreach($criteriaNames AS $criteriaName)
+                            {	
+                                //TODO
+                                $criteriaCount++;
+                                $letter = substr($criteriaName, 0, 1);
+                                if($previousLetter != '' && $previousLetter != $letter)
+                                {
+                                    //if we have moved from P to M then put the divider in. 
+                                    $rowArray[] = "";
+                                }
+                                $previousLetter = $letter;	
+
+                                if($studentView)
+                                {
+                                    //if its the student view then lets print
+                                    //out the students unformation
+                                    if($studentCriteria = $unit->get_single_criteria(-1, $criteriaName))
+                                    {	
+                                        $retval = $this->set_up_criteria_grid($studentCriteria, '', 
+                                                $possibleValues, $editing, $advancedMode, false, $unit, 0, $user);
+                                        $rowArray[] = $retval;
+                                        if($subCriteria)
                                         {
-                                            $firstLast = 0;
-                                            $i++;
-                                            $extraClass = '';
-                                            if($i == 1)
+                                            //Get the used Sub Criteria Names from the heading for this criteriaName
+                                            //for example get the p1.1, P1.2 ect for the P1
+                                            if(array_key_exists($criteriaName, $subCriteriaArray))
                                             {
-                                                $extraClass = 'startSubCrit';
-                                                if(count($criteriaSubCriteriasUsed) == 1)
+                                                $criteriaSubCriteriasUsed = $subCriteriaArray[$criteriaName];
+                                                //Lets see if this Criteria has the subcriteria that matches the heading
+                                                $cellCount = count($criteriaSubCriteriasUsed);
+                                                $i = 0;
+                                                foreach($criteriaSubCriteriasUsed AS $subCriteriaUsed)
                                                 {
-                                                    $extraClass .= " endSubCrit";
-                                                }
-                                                $firstLast = 1;
-                                            }
-                                            elseif($i == $cellCount)
-                                            {
-                                                $extraClass = 'endSubCrit';
-                                                $firstLast = -1;
-                                            }
-                                            $criteriaCount++;
-                                            $actualSubCriteria = $studentCriteria->get_single_criteria(-1, $subCriteriaUsed);
-                                            if($actualSubCriteria)
-                                            {
-                                                //then create the grid
-                                                $rowArray[] = $this->set_up_criteria_grid($actualSubCriteria, 
-                                                        $extraClass.' subCriteria subCriteria_'.$criteriaName, 
-                                                        $possibleValues, $editing, $advancedMode, 
-                                                        true, $unit, $firstLast, $user);
+                                                    $firstLast = 0;
+                                                    $i++;
+                                                    $extraClass = '';
+                                                    if($i == 1)
+                                                    {
+                                                        $extraClass = 'startSubCrit';
+                                                        if(count($criteriaSubCriteriasUsed) == 1)
+                                                        {
+                                                            $extraClass .= " endSubCrit";
+                                                        }
+                                                        $firstLast = 1;
+                                                    }
+                                                    elseif($i == $cellCount)
+                                                    {
+                                                        $extraClass = 'endSubCrit';
+                                                        $firstLast = -1;
+                                                    }
+                                                    $criteriaCount++;
+                                                    $actualSubCriteria = $studentCriteria->get_single_criteria(-1, $subCriteriaUsed);
+                                                    if($actualSubCriteria)
+                                                    {
+                                                        //then create the grid
+                                                        $rowArray[] = $this->set_up_criteria_grid($actualSubCriteria, 
+                                                                $extraClass.' subCriteria subCriteria_'.$criteriaName, 
+                                                                $possibleValues, $editing, $advancedMode, 
+                                                                true, $unit, $firstLast, $user);
+                                                    }
+                                                    else
+                                                    {
+                                                        $rowArray[] = '';
+        //                                                $retval .= "<td display='none' class='grid_cell_blank $extraClass subCriteria subCriteria_$criteriaName'></td>";	
+                                                    }//end else not actualSubCriteria
+                                                }//end loop sub Criteria
                                             }
                                             else
                                             {
                                                 $rowArray[] = '';
-//                                                $retval .= "<td display='none' class='grid_cell_blank $extraClass subCriteria subCriteria_$criteriaName'></td>";	
-                                            }//end else not actualSubCriteria
-                                        }//end loop sub Criteria
-                                    }
-                                    else
-                                    {
-                                        $rowArray[] = '';
-                                    }
-								}//end if there is sub criteria
-							}//end if student criteria
-							else //not student criteria (i.e. the criteria doesnt exist on that unit)
-							{                                
-                                //retval needs to be an array of the columns
-                                if (isset($criteriaCountArray)){
-                                    $rowArray = $this->get_criteria_not_on_unit($criteriaCount, $criteriaCountArray, 
-                                    $advancedMode, $editing, $criteriaName, $subCriteriaArray, $rowArray);
-                                } else {
-                                    $rowArray[] = '';
+                                            }
+                                        }//end if there is sub criteria
+                                    }//end if student criteria
+                                    else //not student criteria (i.e. the criteria doesnt exist on that unit)
+                                    {                                
+                                        //retval needs to be an array of the columns
+                                        if (isset($criteriaCountArray)){
+                                            $rowArray = $this->get_criteria_not_on_unit($criteriaCount, $criteriaCountArray, 
+                                            $advancedMode, $editing, $criteriaName, $subCriteriaArray, $rowArray);
+                                        } else {
+                                            $rowArray[] = '';
+                                        }
+        //                                $rowArray[] = $retval;
+                                    }//end else not sudent criteria	
                                 }
-//                                $rowArray[] = $retval;
-							}//end else not sudent criteria	
-						}
-						else//its not the student view
-						{//This means we are just showing the qual as a whole. 
-							//then lets just test if he unit has that criteria
-							//and mark it as present or not
-							
-							$retval .= $this->get_non_student_view_grid($criteriaCount, $criteriaCountArray, $criteriaName, $unit, $subCriteriaArray);
-                            $rowArray[] = $retval;
-                            
-                        }
-						
-					}//end for each criteria
-				}//end if criteria names
-				$rowsArray[] = $rowArray;
-//				$retval .= "</tr>";	
-			}//end if student view and student doing the unit.
-		}//end for each unit
+                                else//its not the student view
+                                {//This means we are just showing the qual as a whole. 
+                                    //then lets just test if he unit has that criteria
+                                    //and mark it as present or not
+
+                                    $retval .= $this->get_non_student_view_grid($criteriaCount, $criteriaCountArray, $criteriaName, $unit, $subCriteriaArray);
+                                    $rowArray[] = $retval;
+
+                                }
+
+                            }//end for each criteria
+                        }//end if criteria names
+                    }
+                    
+                    $rowsArray[] = $rowArray;
+    //				$retval .= "</tr>";	
+                }//end if student view and student doing the unit.
+            }//end for each unit
+        }
         return $rowsArray;
     }
     
+    private function load_user_activity_unit_selection($byUnit = false)
+    {
+        //get the activity array keys
+        global $DB;
+        $activityKeys = $this->activityids;
+        $sql = "SELECT distinct(refs.id), coursemoduleid, refs.bcgtunitid, refs.bcgtcriteriaid 
+            FROM {block_bcgt_activity_refs} refs 
+            JOIN {block_bcgt_user_unit} userunit ON userunit.bcgtunitid = refs.bcgtunitid 
+            WHERE userunit.userid = ? AND refs.bcgtqualificationid = ? AND refs.coursemoduleid IN (";
+        $params = array();
+        $params[] = $this->studentID;
+        $params[] = $this->id;
+        $count = 0;
+        foreach($activityKeys AS $id)
+        {
+            $count++;
+            $sql .= '?';
+            if($count != count($activityKeys))
+            {
+                $sql .= ',';
+            }
+            $params[] = $id;
+        }
+        $sql .= ')';
+        $records = $DB->get_records_sql($sql, $params); 
+        $activiySelection = array();
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                if(!$byUnit)
+                {
+                    //then we are doing it by activity. 
+                    if(array_key_exists($record->coursemoduleid, $activiySelection))
+                    {
+                       $unitSelection = $activiySelection[$record->coursemoduleid];
+                    }
+                    else
+                    {
+                        $unitSelection = array();
+                    }
+                    if(array_key_exists($record->bcgtunitid, $unitSelection))
+                    {
+                        $criteriaArray = $unitSelection[$record->bcgtunitid];
+                    }
+                    else
+                    {
+                        $criteriaArray = array();
+                    }
+                    $criteriaArray[$record->bcgtcriteriaid] = $record->bcgtcriteriaid;
+                    $unitSelection[$record->bcgtunitid] = $criteriaArray;
+                    $activiySelection[$record->coursemoduleid] = $unitSelection;
+                }
+                else
+                {
+                    //we are doing it by unit
+                    if(array_key_exists($record->bcgtunitid, $activiySelection))
+                    {
+                       $activitySel = $activiySelection[$record->bcgtunitid];
+                    }
+                    else
+                    {
+                        $activitySel = array();
+                    }
+                    if(array_key_exists($record->coursemoduleid, $activitySel))
+                    {
+                        $criteriaArray = $activitySel[$record->coursemoduleid];
+                    }
+                    else
+                    {
+                        $criteriaArray = array();
+                    }
+                    $criteriaArray[$record->bcgtcriteriaid] = $record->bcgtcriteriaid;
+                    $activitySel[$record->coursemoduleid] = $criteriaArray;
+                    $activiySelection[$record->bcgtunitid] = $activitySel;
+                }
+            }
+        }
+        $this->userActivityUnitsSelection = $activiySelection;
+    }
+    
+    public function get_class_grid_data($advancedMode, $editing)
+    {
+        //get the units
+        //get the students
+        //do it by paging. 
+        $pageNumber = optional_param('page',1,PARAM_INT);
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $sCourseID = optional_param('scID', -1, PARAM_INT);
+        $groupID = optional_param('grID', -1, PARAM_INT);
+        global $COURSE;
+        $context = context_course::instance($COURSE->id);
+        if($courseID != -1)
+        {
+            $context = context_course::instance($courseID);
+        } 
+        $retval = array();
+        $unitAwards = null;
+        if($editing)
+        {
+            $unitAwards = Unit::get_possible_unit_awards($this->get_class_ID());
+        }
+        $this->unitAwards = $unitAwards;
+        
+        //get the students:
+        //1.) get the students by qual
+        //2.) then by course
+        //3.) then by group
+        $rows = array();
+        $loadParams = new stdClass();
+        $loadParams->loadLevel = Qualification::LOADLEVELUNITS;
+        $loadParams->loadAward = true;
+        $loadParams->calcAward = false;
+        $loadParams->loadAddUnits = false;
+        $this->load_users('student', false, $loadParams, $sCourseID, $groupID);
+        if(isset($this->usersstudent))
+        {
+            $studentsArray = $this->usersstudent;
+            if(get_config('bcgt','pagingnumber') != 0)
+            {
+                $pageRecords = get_config('bcgt','pagingnumber');
+                //then we only want a certain number!
+                //we also need to take into account the page number we are on.
+                //studentsArray is the array of students on the unit on this qual. 
+                //the keys are the ids of the students. 
+                $keys = array_keys($studentsArray);
+                //arrays keys returns an array of the keys of the first aray. This return aray has its keys set to 
+                //the numerical order, e.g. always starting at 0, then 1 etc.  
+
+                $studentsShowArray = array();
+                //are we at the first page, 
+                if($pageNumber == 1)
+                {
+                   $i = 0; 
+                }
+                else
+                {
+                    //no so we want to start at the page number times by how many we show per page
+                    $i = ($pageRecords * ($pageNumber - 1)) + ($pageNumber - 1);
+                }
+                //we want to loop over and only show the number of students in our page size. 
+                $recordsEnd = ($i + $pageRecords);
+                for($i;$i<=$recordsEnd;$i++)
+                {
+                    //gets the student object from the array by the key that we are looking at.
+                    if (isset($keys[$i]) && isset($studentsArray[$keys[$i]]))
+                    {
+                        //so, if we have the student id for the nth student we need. 
+                        //then find the student that that id coresponds to from our original array of students. 
+                        $student = $studentsArray[$keys[$i]];
+                        //add this student to the array that we want to display.
+                        $studentsShowArray[$keys[$i]] = $student;
+                    }
+                }
+            }
+            else {
+                $studentsShowArray = $studentsArray;
+            }
+            $rowCount = 0;
+            foreach($studentsShowArray AS $student)
+            {
+                //this is loaded in get_users() above;
+                //THIS MAY BE TOO COSTLY!
+//                if(isset($this->usersQualsstudent[$student->id]))
+//                {
+//                    $studentQual = $this->usersQualsstudent[$student->id];
+                    $studentQual = Qualification::get_qualification_class_id($this->id, $loadParams);
+                    $studentQual->load_student_information($student->id, $loadParams);
+                    $usersUnits = $studentQual->get_units();
+                    $row = array();       
+                    $rowCount++;
+                    $rowClass = 'rO';
+                    if($rowCount % 2)
+                    {
+                        $rowClass = 'rE';
+                    }				
+
+                    //load the qual object up for the student:
+                    $extraClass = '';
+                    if($rowCount == 1)
+                    {
+                        $extraClass = 'firstRow';
+                    }
+                    elseif($rowCount == count($studentsArray))
+                    {
+                        $extraClass = 'lastRow';
+                    }  
+                    // End Unit Comment  
+                    $row = $this->build_class_grid_students_details($student, $this->id, 
+                            $row, $context);
+
+                    //now we need to do for each unit
+                    //if its edit
+                    //then a drop down to change
+                    //else if its not then just output
+
+                    foreach($units = $this->units AS $unit)
+                    {
+                        if(array_key_exists($unit->get_id(), $usersUnits) && $usersUnits[$unit->get_id()]->is_student_doing())
+                        {
+                            $userUnit = $usersUnits[$unit->get_id()];
+                            //then the user is on this unit for sure, 
+                            $userAwardString = '';
+                            $userAwardID = -1;
+                            $userAward = $userUnit->get_user_award();
+                            if($userAward)
+                            {
+                                $userAwardString = $userAward->get_award();
+                                $userAwardID = $userAward->get_id();
+                            }
+                            if($editing)
+                            {
+                                //drop down
+                                $retval = '<select qual="'.$this->id.'" id="unitAwardS_'.$student->id.'_u_'.$unit->get_id().'" class="unitAward">';
+                                $retval .= '<option value="-1"> </option>';
+                                foreach($this->unitAwards AS $award)
+                                {
+                                    $selected = '';
+                                    if($userAwardID == $award->id)
+                                    {
+                                        $selected = 'selected="selected"';
+                                    }
+                                    $retval .= '<option '.$selected.' value="'.$award->id.'">'.$award->award.'</option>';
+                                }
+                                $retval .= '</select>';
+                                $row[] = $retval;
+                            }
+                            else
+                            { 
+                                //just output the award
+                                $row[] = $userAwardString;
+                            }
+                        }
+                        else
+                        {
+                            $row[] = '<span class="usernotonunit"></span>';
+                        }
+                    }//end for each unit
+                    $rows[] = $row;
+//                }
+            }//end for each student
+            
+        }
+        return $rows;
+    }
+    
+    protected function build_class_grid_students_details($student, $qualID, 
+                        $row, $context)
+    {
+        //now to build up the columns that contain the students.
+        global $CFG, $printGrid, $OUTPUT;
+		   
+        //columns supported are:
+        //picture,username,name,firstname,lastname,email
+        $columns = $this->defaultColumns;
+        $configColumns = get_config('bcgt','btecgridcolumns');
+        $link = $CFG->wwwroot.'/blocks/bcgt/grids/student_grid.php?qID='.$qualID.'&sID='.$student->id;  
+        //need to get the global config record
+        
+        if($configColumns)
+        {
+            $columns = explode(",", $configColumns);
+        }
+        foreach($columns AS $column)
+        {
+            $content = '<a href="'.$link.'" class="studentUnit" title="" id="sID_'.
+                    $student->id.'_qID_'.$qualID.'">';
+            switch(trim($column))
+            {
+                case("picture"):
+                    $content .= $OUTPUT->user_picture($student, array('size' => 25));
+                    break;
+                case("username"):
+                    $content .= $student->username;
+                    break;
+                case("name"):
+                    $content .= $student->firstname."<br />".$student->lastname;
+                    break;
+                case("firstname"):
+                    $content .= $student->firstname;
+                    break;
+                case("lastname"):
+                    $content .= $student->lastname;
+                    break;
+                case("email"):
+                    $content .= $student->email;
+                    break;
+            }
+            $content .= '</a>';
+                        
+            if ($column == "username")
+            {
+                $content .= "&nbsp;<img src='".$CFG->wwwroot."/blocks/bcgt/pix/info.png' class='studentUnitInfo' qualID='{$qualID}' studentID='{$student->id}' unitID='{$this->get_id()}' />";
+            }
+            
+            $row[] = $content;
+        }
+		$qualAward = "N/A";
+        if(has_capability('block/bcgt:viewbtecavggrade', $context))
+        {
+            $loadParams = new stdClass();
+            $loadParams->loadLevel = 0;
+            $loadParams->loadAward = true;
+            $this->load_student_information($student->id, $loadParams);
+            //work out the students qualification award
+            $award = $this->predictedAward;
+            $finalAward = $this->studentAward;
+            
+            //are the predicted and final different?
+            if($this->studentAward && $this->predictedAward && 
+                    ($this->studentAward->get_award() != $this->predictedAward->get_award()))
+            {
+                //we need to recalculate
+                $this->calculate_qual_award(false);
+            }
+                    
+            $qualAwardType = '';
+            $awardFullString = 'N/A';
+            if($award)
+            {
+                $qualAwardType = $award->get_type();
+                $awardString = $award->get_award();
+                $awardFullString = $awardString;
+            }
+            $qualAward = "<span id='qualAward_".$student->id."'>".
+                        $awardFullString."</span>";
+            $row[] = $qualAward;
+        }
+		
+		return $row;
+    }
+        
     /**
 	 * Returns the possible values that can be selected for this qualification type
 	 * when updating criteria for students
@@ -2434,13 +3997,13 @@ JS;
 			$extraClassEnd = '_'.$extraCellClass;	
 		}
 		//$retval .= "<td class='$extraClass criteriaValue r".$unit->get_id()." c$criteriaName'>";								
-		$retval .= "<span class='stuValue' id='cID_".$studentCriteria->get_id().
+		$retval .= "<span class='stuValue' student='".$this->studentID."' qual='$this->id' unit='".$unit->get_id()."' id='cID_".$studentCriteria->get_id().
                 "_uID_".$unit->get_id()."_SID_".$this->studentID."_QID_".
                 $this->id."'>";
-        $retval .= "<select $disabled class='criteriaValueSelect' id='cID_".
+        $retval .= "<select unit='".$unit->get_id()."' $disabled class='criteriaValueSelect' id='cID_".
                 $studentCriteria->get_id().
                 "_uID_".$unit->get_id()."_SID_".$this->studentID.
-                "_QID_".$this->id."' name='cID_".$studentCriteria->get_id().
+                "_QID_".$this->id."' student='".$this->studentID."' qual='$this->id' name='cID_".$studentCriteria->get_id().
                 "'><option value='-1'></option>";
 		if($possibleValues)
 		{
@@ -2474,8 +4037,15 @@ JS;
         $commentImgID = "cmtCell_cID_".$studentCriteria->get_id()."_uID_".$unit->get_id()."_SID_".$this->studentID.
                         "_QID_".$this->id;
         
-        $username = htmlentities( $student->username, ENT_QUOTES );
-        $fullname = htmlentities( fullname($student), ENT_QUOTES );
+        $username = '';
+        $fullName = '';
+        if($student && isset($student->username))
+        {
+            $username = $student->username;
+            $username = fullname($student);
+        }
+        $username = htmlentities( $username, ENT_QUOTES );
+        $fullname = htmlentities( $username, ENT_QUOTES );
         $unitname = htmlentities( $unit->get_name(), ENT_QUOTES);
         $critname = htmlentities($studentCriteria->get_name(), ENT_QUOTES);        
                                 
@@ -2504,10 +4074,10 @@ JS;
             $disabled = 'disabled="disabled"';
         }
 		$retval = "";
-		$retval .= "<span class='stuValue' id='cID_".$studentCriteria->get_id().
+		$retval .= "<span class='stuValue' qual='$this->id' student='".$this->studentID."' unit='".$unit->get_id()."' id='cID_".$studentCriteria->get_id().
                 "_uID_".$unit->get_id()."_SID_".$this->studentID."_QID_".$this->id.
-                "'><input $disabled type='checkbox'".
-                "class='criteriaValueMet criteriaCheck' name='cID_".$studentCriteria->get_id()."'".
+                "'><input $disabled student='".$this->studentID."' type='checkbox'".
+                "class='criteriaValueMet criteriaCheck' unit='".$unit->get_id()."' qual='$this->id' name='cID_".$studentCriteria->get_id()."'".
                 "id='cID_".$studentCriteria->get_id()."_uID_".$unit->get_id()."_SID_".$this->studentID."_QID_".$this->id."'";
 		if($studentValueObj->get_short_value() == 'A')
 		{
@@ -2638,6 +4208,224 @@ JS;
 		$retval .= "</select>";
 		return $retval;
 	}
+    
+    protected function get_act_grid_header($activities, $grid)
+    {
+        $editing = false;
+        $advancedMode = false;
+        if($grid == 'es' || $grid == 'ea')
+        {
+            $editing = true;
+        }
+        if($grid == 'a' || $grid = 'ea')
+        {
+            $advancedMode = true;
+        }
+        global $CFG;
+		$headerObj = new stdClass();
+		$header = '';
+		$header .= "<thead>";
+		$dividers = array();
+        $header .= "<tr class='mainRow'>";
+        $mainRowRowSpan = 3;    
+		//denotes projects
+		$header .= "<th rowspan='$mainRowRowSpan'></th>";
+        if($advancedMode && $editing)
+        {
+            $header .= "<th rowspan='$mainRowRowSpan' class='unitComment'></th>";
+        }
+        elseif(!($editing && $advancedMode))
+        {
+            $header .= "<th rowspan='$mainRowRowSpan'></th>";
+        }
+        //columns supported are:
+        //picture,username,name,firstname,lastname,email
+        $columns = $this->defaultColumns;
+        //need to get the global config record
+        
+        $configColumns = get_config('bcgt','btecgridcolumns');
+        if($configColumns)
+        {
+            $columns = explode(",", $configColumns);
+        }
+        foreach($columns AS $column)
+        {
+            $header .="<th rowspan='$mainRowRowSpan'>";
+            $header .= get_string(trim($column), 'block_bcgt');
+            $header .="</th>";
+        }
+
+        $totalHeaderCount = 7;
+
+        //this specifies when there is a border. 
+        $criteriaCountArray = array(); 
+        $activityTopRow = '';
+        $countProcessed = 0;
+        $courseID = optional_param('scID', -1, PARAM_INT);
+        $groupID = optional_param('grID', -1, PARAM_INT);
+        $modIcons = load_mod_icons($courseID, $this->id, $groupID, -1, -1);
+        $modLinking = load_bcgt_mod_linking();
+        $qual = new stdClass();
+            $qual->id = $this->id;
+            $activityUnitRow = '<tr>';
+            $activityCritRow = '<tr>';
+        foreach($activities AS $activity)
+        {
+            //load the due date
+            $dueDate = get_bcgt_mod_due_date($activity->id, $activity->instanceid, $activity->cmodule, $modLinking);
+            $activity->dueDate = $dueDate;
+            $countProcessed++;
+            //top row is for the activity
+            //icon, name, due date
+            //need to get the criteria selection for this activity
+            //
+            $totalCriteriaCount = 0;
+            $activityUnits = bcgt_get_mod_unit_criteria($courseID, $this->id, $groupID, $activity->id); 
+            foreach($activityUnits AS $unitID => $criterias)
+            {
+                $unitObj = $this->units[$unitID];
+                $activityUnitRow .= '<th role="columnheader" colspan="'.count($criterias).'">'.$unitObj->get_name().'</th>';
+                $totalHeaderCount++;
+                
+                require_once($CFG->dirroot.'/blocks/bcgt/classes/sorters/CriteriaSorter.class.php');
+                $criteriaSorter = new CriteriaSorter();
+                uasort($criterias, array($criteriaSorter, "ComparisonDelegateByArrayNameLetters"));
+
+                foreach($criterias AS $criteriaID => $criteriaName)
+                {
+                    $criteriaObj = $unitObj->get_single_criteria($criteriaID);
+                    $activityCritRow .= '<th role="columnheader">'.$criteriaObj->get_name().'</th>';
+                    $totalCriteriaCount++;
+                }
+                $criteriaCountArray[] = count($criterias);
+                $activityUnits[$unitID] = $criterias;
+            }
+            //need to sort the criterias 
+            //need the icon
+            //need the name
+            //need the due date. 
+            $activityTopRow .= '<th role="columnheader" colspan="'.$totalCriteriaCount.'">';
+            if(array_key_exists($activity->module,$modIcons))
+            {
+                $icon = $modIcons[$activity->module];
+                //show the icon. 
+                $activityTopRow .= '<span class="activityicon">';
+                $activityTopRow .= html_writer::empty_tag('img', array('src' => $icon,
+                            'class' => 'bcgtmodcriticon activityicon', 'alt' => $activity->module));
+                $activityTopRow .= '</span>';
+            }
+            $activityTopRow .= '<span class="activityname">';
+            $activityTopRow .= $activity->name;
+            $activityTopRow .= '</span>';
+            $activityTopRow .= '<span class="activityduedate">';
+            if($activity->dueDate)
+            {
+                $activityTopRow .= '<br />'.date('d M Y : H:m', $activity->dueDate); 
+            }
+            $activityTopRow .= '</span>';
+            $activityTopRow .= '</th>';
+            if(count($activities) != $countProcessed)
+            {
+                $activityTopRow .= '<th class="divider"></th>';
+                $activityUnitRow .= '<th class="divider"></th>';
+                $activityCritRow .= '<th class="divider"></th>';
+                $totalHeaderCount++;
+            }
+            $activity->unitcriteria = $activityUnits;
+        }
+        $this->activities = $activities;
+        $activityCritRow .= '</tr>';
+        $activityUnitRow .= '</tr>';
+        $header .= $activityTopRow.'</tr>';
+        $header .= $activityUnitRow;
+        $header .= $activityCritRow;
+        $header .= "</thead>";
+		$headerObj->header = $header;
+        
+        //need to work out this one for the activities. 
+        
+		$headerObj->criteriaCountArray = $criteriaCountArray;
+		//$headerObj->orderedCriteriaNames = $criteriaNames;
+        $headerObj->totalHeaderCount = $totalHeaderCount;
+		return $headerObj;
+    }
+    
+    protected function get_class_grid_header($grid)
+    {
+        //needs to come up with a grid of the units
+        //so needs to get all of the units on the qual:
+        global $COURSE;
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        if($courseID == -1)
+        {
+            $courseID = $COURSE->id;
+        }
+        $context = context_course::instance($courseID);
+        $units = $this->units;
+        //do we need to order the units? 
+        //YES WHEN WE HAVE A BLOODY ORDER!!!!!
+        $headerObj = new stdClass();
+		$header = '';
+		//extra one for projects
+		$header .= "<thead><tr>";
+        //columns supported are:
+        //picture,username,name,firstname,lastname,email
+        $columns = $this->defaultColumns;
+        //need to get the global config record
+        
+        $configColumns = get_config('bcgt','btecgridcolumns');
+        if($configColumns)
+        {
+            $columns = explode(",", $configColumns);
+        }
+        foreach($columns AS $column)
+        {
+            $header .="<th>";
+            $header .= get_string(trim($column), 'block_bcgt');
+            $header .="</th>";
+        }
+        if(has_capability('block/bcgt:viewbtecavggrade', $context))
+        {
+            $header .= '<th>';
+            $header .= get_string('award', 'block_bcgt');
+            $header .= '</th>';
+        }
+        foreach($units AS $unit)
+        {
+            $header .="<th>";
+            $header .= $unit->get_uniqueID().' : '.$unit->get_name();
+            $header .="</th>";
+        }
+        $header .= "</tr></thead>";
+		$headerObj->header = $header;
+		return $headerObj;
+    }
+    
+    protected function get_simple_grid_header($criteriaNames)
+    {
+        $header = '';
+        $header .= "<thead><tr>";
+        $header .= '<th></th><th></th>';
+        $header .= '<th>'.get_string('unit', 'block_bcgt').'</th>';
+        $previousLetter = '';
+        foreach($criteriaNames AS $criteriaName)
+        {
+            $letter = substr($criteriaName, 0, 1);
+            if($previousLetter != '' && $previousLetter != $letter)
+            {
+                //if the criteria letter changes (i.e. P to M) then lets 
+                //create a divider. 
+                $header .= "<th class='divider'></th>";
+            }
+            $previousLetter = $letter;
+            
+            $header .= '<th>';
+            $header .= BTECQualification::build_criteria_display_name($criteriaName);
+            $header .= '</th>';
+        }
+        $header .= "</tr></thead>";
+        return $header;
+    }
         
     protected function get_grid_header($totalCredits, $studentView, $criteriaNames, $grid, $subCriteriaArray = false)
 	{
@@ -2655,40 +4443,93 @@ JS;
 		$headerObj = new stdClass();
 		$header = '';
 		//extra one for projects
-		$header .= "<thead><tr><th></th>";
-        $warningClass = '';
-        if($this->defaultcredits && $this->defaultcredits != $totalCredits)
+        $header .= "<thead><tr>";
+        $order = optional_param('order', 'spec', PARAM_TEXT);
+        if($order == 'actunit')
         {
-            $warningClass = 'warningcredits';
+            //then we want 3 for activity
+            $header .= "<th></th>";
+            $header .= "<th>".get_string('name','block_bcgt')."</th>";
+            $header .= "<th>".get_string('duedate', 'block_bcgt')."</th>";
+            
+            $colspan = 1;
+            //we want max number of units on any activity.
+            $activityIDs = array_keys($this->activities);
+            //but is the user doing all of the units?
+            $maxNoUnits = bcgt_get_max_units_activity($activityIDs, $this->studentID);
+            if($maxNoUnits)
+            {
+                $colspan = $maxNoUnits->maxcount;
+            }
+            $this->maxNoUnits = $maxNoUnits;
+            for($i=1;$i<=$colspan;$i++)
+            {
+                $header .= '<th>'.get_string('unit', 'block_bcgt').''.$i.'</th>';
+            }
+            
+            $headerObj->criteriaCountArray = array();
+            $headerObj->totalCellCount = 0;
         }
-        if($advancedMode && $editing)
-        {
-            $header .= "<th class='unitComment'></th>";
-        }
-        elseif(!($editing && $advancedMode))
+        else
         {
             $header .= "<th></th>";
-        }
-
-        $header .= "<th><span class=".$warningClass.">".get_string('unit','block_bcgt')." (".
-                get_string('total','block_bcgt')." ".
-                $this->get_credits_display_name()." $totalCredits/".$this->defaultcredits.")</span></th>";
-        $totalCellCount = 3;
-		if($studentView)
-		{//if its not student view then we are looking at just
-			//the qual in general rather than a student.
-			$header .= "<th>".get_string('award','block_bcgt')."</th>";
-            $totalCellCount++;
-            // If qual has % completions enabled
-            if($this->has_percentage_completions() && !$printGrid && $studentView){
-                $header .= "<th>% Complete</th>";
-                $totalCellCount++;
+            $warningClass = '';
+            if($this->defaultcredits && $this->defaultcredits != $totalCredits)
+            {
+                $warningClass = 'warningcredits';
             }
-		}	  
-		$headerObj = BTECQualification::get_criteria_headers($criteriaNames, $subCriteriaArray, 
-                $advancedMode, $editing, $totalCellCount);
-		$subHeader = $headerObj->subHeader;
-		$header .= $subHeader;
+            if($advancedMode && $editing)
+            {
+                $header .= "<th class='unitComment'></th>";
+            }
+            elseif(!($editing && $advancedMode))
+            {
+                $header .= "<th></th>";
+            }
+
+            $header .= "<th><span class=".$warningClass.">".get_string('unit','block_bcgt')." (".
+                    get_string('total','block_bcgt')." ".
+                    $this->get_credits_display_name()." $totalCredits/".$this->defaultcredits.")</span></th>";
+            $totalCellCount = 3;
+            if($studentView)
+            {//if its not student view then we are looking at just
+                //the qual in general rather than a student.
+                $header .= "<th>".get_string('award','block_bcgt')."</th>";
+                $totalCellCount++;
+                // If qual has % completions enabled
+                if($this->has_percentage_completions() && !$printGrid && $studentView){
+                    $header .= "<th>% Complete</th>";
+                    $totalCellCount++;
+                }
+            }	
+            if($order == 'unitact')
+            {
+                //but what happens if the user isnt on the unit?
+                $unitIDs = array_keys($this->units);
+                $maxNoActivities = bcgt_get_max_activity_units($unitIDs, $this->studentID);
+                $this->maxNoActivities = $maxNoActivities;
+                if($maxNoActivities)
+                {
+                    $colspan = $maxNoActivities->maxcount;
+                }
+                for($i=1;$i<=$colspan;$i++)
+                {
+                    $header .= '<th>'.get_string('activities', 'block_bcgt').''.$i.'</th>';
+                }
+                
+                $headerObj->criteriaCountArray = array();
+                $headerObj->totalCellCount = 0;
+            }
+            else
+            {
+                $headerObj = BTECQualification::get_criteria_headers($criteriaNames, $subCriteriaArray, 
+                    $advancedMode, $editing, $totalCellCount);
+                $subHeader = $headerObj->subHeader;
+                $header .= $subHeader;
+            }
+        }
+        
+            
 		$header .= "</tr></thead>";
 		$headerObj->header = $header;
 		return $headerObj;
@@ -2808,12 +4649,18 @@ JS;
 		$usedCriteriaNames = array();
         foreach($this->units AS $unit)
         {
-            $unitCriteriaNames = $unit->get_criteria_names();
-            if($unitCriteriaNames)
+            //is the user doing this unit?
+            if(!$unit->get_student_ID() || ($unit->get_student_ID() && $unit->is_student_doing()))
             {
-                //because some units dont have any credits!
-                $usedCriteriaNames = array_merge($unitCriteriaNames, $usedCriteriaNames);
+                $unitCriteriaNames = $unit->get_criteria_names();
+                if($unitCriteriaNames)
+                {
+                    //because some units dont have any credits!
+                    $usedCriteriaNames = array_merge($unitCriteriaNames, $usedCriteriaNames);
+                }
             }
+            
+            
         }
         $this->usedCriteriaNames = $usedCriteriaNames;
 		return $usedCriteriaNames;
@@ -3330,7 +5177,7 @@ JS;
     }
     
     protected function calculate_actual_qual_award($failIfPredicted = false, $pointsPerXCredits = 1)
-	{
+	{        
         $noUnitsAwarded = 0;
 		$countAwards = 0;
 		$unitPoints = 0;
@@ -3358,12 +5205,14 @@ JS;
 		//Get all of the units that have an award
 		//add up all of the points that these awards make
 		//count them
+        $countUnitsOn = 0;
 		foreach($this->units AS $unit)
 		{
 			//we want to only count the units a student is 
 			//actually doing on the qual
 			if($unit->is_student_doing())
 			{
+                $countUnitsOn++;
 				//credits for the unit
 				$unitCredit = $unit->get_credits();
 				if($unitCredit == null || $unitCredit == 0)
@@ -3429,7 +5278,6 @@ JS;
 		$overallPoints = $averagePoints * ($totalCredit/$pointsPerXCredits);
         $overallMinPoint = $unitPoints + $unitPointsNoMin;
         $overallMaxPoint = $unitPoints + $unitPointsNoMax;
-        
 		//Try and get the final award (may not do if we dont have enough
 		//points)
         $retval = new stdClass();
@@ -3912,8 +5760,9 @@ JS;
             $criteriaSorter = new CriteriaSorter();
             usort($criteriaNames, array($criteriaSorter, "ComparisonDelegateByArrayNameLetters"));
 
-
-            $headerObj = $this->get_grid_header($totalCredits, true, $criteriaNames, 'student', false, true);
+            $subCriteriaArray = $this->get_used_sub_criteria_names($criteriaNames);
+            
+            $headerObj = $this->get_grid_header($totalCredits, true, $criteriaNames, 'student', $subCriteriaArray );
             $criteriaCountArray = $headerObj->criteriaCountArray;
             $this->criteriaCount = $criteriaCountArray;
             
@@ -4039,7 +5888,10 @@ JS;
                                             $firstLast = -1;
                                         }
                                         $criteriaCount++;
-                                        $actualSubCriteria = $studentCriteria->get_single_criteria(-1, $subCriteriaUsed);
+                                        $actualSubCriteria = false;
+                                        if ($studentCriteria){
+                                            $actualSubCriteria = $studentCriteria->get_single_criteria(-1, $subCriteriaUsed);
+                                        }
                                         if($actualSubCriteria)
                                         {
                                             //then create the grid
@@ -4116,8 +5968,15 @@ JS;
         echo "</head><body style='background: url(\"{$logo}\") no-repeat;'>";
         
         echo "<h1 class='c'>{$this->get_display_name()}</h1>";
-        echo "<h2 class='c'>".fullname($this->student)."</h2>";
-        echo "<h3 class='c'>(".$this->student->username.")</h3>";
+        $userName = '';
+        $fullName = '';
+        if(isset($this->student))
+        {
+            $userName = $this->student->username;
+            $fullName = fullname($this->student);
+        }
+        echo "<h2 class='c'>".$fullName."</h2>";
+        echo "<h3 class='c'>(".$userName.")</h3>";
 
         echo "<br><br><br>";
         

@@ -8,7 +8,7 @@
 global $CFG;
 require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Qualification.class.php');
 require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtalevel/lib.php');
-abstract class AlevelQualification extends Qualification{
+class AlevelQualification extends Qualification{
 
     //the database id
 	const ID = 6;
@@ -116,6 +116,10 @@ abstract class AlevelQualification extends Qualification{
     public function get_assessment_by_criteria($criteriaID)
     {
         return $this->assessments[$criteriaID];
+    }
+    
+    public function insert_qualification() {
+        return false;
     }
     
     public static function get_edit_form_menu($disabled, $qualID, $typeID)
@@ -1886,6 +1890,8 @@ abstract class AlevelQualification extends Qualification{
         $retval .= "<input type='submit' id='viewsimple' name='viewsimple' value='View Simple' class='viewsimple' />";
         $retval .= "<br>";
         $courseID = optional_param('cID', -1, PARAM_INT);
+        $groupingID = optional_param('grID', -1, PARAM_INT);
+        $sCourseID = optional_param('scID', -1, PARAM_INT);
         $context = context_course::instance($COURSE->id);
         if($courseID != -1)
         {
@@ -1928,7 +1934,8 @@ abstract class AlevelQualification extends Qualification{
         $loadParams = new stdClass();
         $loadParams->loadLevel = Qualification::LOADLEVELALL;
         $loadParams->loadTargets = true;
-        $students = $this->get_students('', 'lastname ASC, firstname ASC');
+        $onCourse = true;
+        $students = $this->get_students('', 'lastname ASC, firstname ASC', $sCourseID, $onCourse, $groupingID);
         if($students)
         {
             foreach($students AS $student)
@@ -1992,7 +1999,7 @@ abstract class AlevelQualification extends Qualification{
                 return new A2LevelQualification($qualID, $params, $loadParams);
                 break;
             default;
-                return false;
+                return new ALevelQualification($qualID, $params, $loadParams);
         }
         return false;
     }

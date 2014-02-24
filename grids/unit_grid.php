@@ -27,6 +27,8 @@ require_login();
 $PAGE->set_context($context);
 $qualID = optional_param('qID', -1, PARAM_INT);
 $unitID = optional_param('uID', -1, PARAM_INT);
+$groupingID = optional_param('grID', -1, PARAM_INT);
+$sCourseID = optional_param('scID', -1, PARAM_INT);
 $forceLoad = optional_param('fload', true, PARAM_BOOL);
 $clearSession = optional_param('csess', true, PARAM_BOOL);
 load_unit_class($unitID);
@@ -110,10 +112,10 @@ if($unit)
     $PAGE->navbar->add($unit->get_uniqueID().' - '.$unit->get_name(),null,'title');
 }
 $out = $OUTPUT->header();
-    $out .= '<form id="unitGridForm" method="POST" name="unitGridForm" action="unit_grid.php?">';			
+    $out .= '<form id="unitGridForm" method="POST" name="unitGridForm">';			
     $out .= '<input type="hidden" name="cID" id="cID" value="'.$courseID.'"/>';
     $out .= '<input type="hidden" name="gridType" value="unit" />';
-    
+    $out .= '<input type="hidden" name="grID" id="grID" value="'.$groupingID.'"/>';
     // Menu
     $out .= '<div class="bcgtGridMenu">';
     if(has_capability('block/bcgt:viewclassgrids', $context))
@@ -129,13 +131,6 @@ $out = $OUTPUT->header();
             else
             {
                 $quals = $unit->get_quals_on_roles('', $USER->id, array('teacher', 'editingteacher'));
-                
-//                $teacherRole = $DB->get_record_sql('SELECT * FROM {role} WHERE shortname = ?', array('teacher'));
-//                //TODO only get the quals that the teacher can teach on. 
-//                $quals = $unit->get_quals_on('', $USER->id, $teacherRole->id);
-//                $teacherRole = $DB->get_record_sql('SELECT * FROM {role} WHERE shortname = ?', array('editingteacher'));
-//                //TODO only get the quals that the teacher can teach on. 
-//                $quals = $unit->get_quals_on('', $USER->id, $teacherRole->id);
             }
             $out .= '<div class="bcgtQualChange">';
             $out .= '<label for="qualChange">Change Qualification to : </label>';
@@ -209,7 +204,18 @@ $out = $OUTPUT->header();
     #$heading .= " - ".$unit->get_level()->get_level()." : ".$unit->get_uniqueID()." ".$unit->get_name()."";
     $out .= html_writer::tag('h2', $heading, 
         array('class'=>'formheading'));
-    
+    if($groupingID != -1)
+    {
+        $groupDB = $DB->get_record_sql("SELECT * FROM {groupings} WHERE id = ?", array($groupingID));
+        if($groupDB)
+        {
+            $out .= '<h3>'.get_string('grouping', 'block_bcgt').': '.
+                    $groupDB->name.' (<a href="'.$CFG->wwwroot.
+                    '/blocks/bcgt/grids/unit_grid.php?cID='.$courseID.'&scID='.
+                    $sCourseID.'&qID="'.$qualID.'>'.
+                    get_string('cleargroup', 'block_bcgt').'</a>)</h3>';
+        }
+    }
     $out .= html_writer::start_tag('div', array('class'=>'bcgt_grid_outer', 
     'id'=>'unitGridOuter'));
     //at this point we load it up into the session
@@ -243,7 +249,6 @@ $out = $OUTPUT->header();
                     <br>
                     <input type="button" value="Close" onclick="popup.close();return false;" />    
             </div>';
-    
     $out .= '</form>';			
 $out .= $OUTPUT->footer();
 echo $out;

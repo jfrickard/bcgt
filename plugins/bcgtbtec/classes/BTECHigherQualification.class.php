@@ -7,8 +7,8 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
-
-require_once('BTECQualification.class.php');
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
 class BTECHigherQualification extends BTECQualification {
 	
 	const ID = 3;
@@ -146,6 +146,11 @@ class BTECHigherQualification extends BTECQualification {
     }
     
     public function has_max_award()
+    {
+        return false;
+    }
+    
+    public function has_final_award()
     {
         return false;
     }

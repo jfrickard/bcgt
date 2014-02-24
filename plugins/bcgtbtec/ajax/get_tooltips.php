@@ -28,6 +28,8 @@ if($type == 'studentsunits')
 {
     $loadParams = new stdClass();
     $loadParams->loadLevel = Qualification::LOADLEVELUNITS;
+    $loadParams->loadAward = true;
+    $loadParams->loadAddUnits = false;
     $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
     if($qualification)
     {

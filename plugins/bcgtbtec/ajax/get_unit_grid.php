@@ -21,10 +21,13 @@ $PAGE->set_context($context);
 $flag = optional_param('f', '', PARAM_TEXT);
 $lock = optional_param('lock', false, PARAM_BOOL);
 $unitID = required_param('uID', PARAM_INT);
-$qualID = required_param('qID', PARAM_INT);
+$qualID = optional_param('qID', -1, PARAM_INT);
 $grid = optional_param('g', 's', PARAM_TEXT);
 $studentView = optional_param('v', true, PARAM_BOOL);
 $courseID = optional_param('cID', -1, PARAM_INT);
+$sCourseID = optional_param('scID', -1, PARAM_INT);
+$groupingID = optional_param('grID', -1, PARAM_INT);
+$showHTML = optional_param('html', false, PARAM_BOOL);
 $advancedMode = false;
 if($grid == 'a' || $grid == 'ae')
 {
@@ -54,13 +57,27 @@ if($unit)
     //there is a multidimentional array of rows and columns
     $unit->set_student_flag($flag);
     //above, (e.g. Flat is late to denote if we are showing late)
-    $data = $unit->get_unit_grid_data($qualID, $advancedMode, $editing, $courseID);
+    if($qualID != -1)
+    {
+        $data = $unit->get_unit_grid_data($qualID, $advancedMode, $editing, $sCourseID);
+    }
+    else
+    {
+        $data = $unit->get_unit_grid_full_data($advancedMode, $editing, $sCourseID);
+    }
     $output = array(
 		"iTotalRecords" => count($data),
 		"iTotalDisplayRecords" => count($data),
 		"aaData" => $data
 	);
-	echo json_encode( $output );
+	if($showHTML)
+    {
+        echo bcgt_output_simple_grid_table($data);    
+    }
+    else
+    {
+        echo json_encode( $output );
+    }
 }
 else
 {

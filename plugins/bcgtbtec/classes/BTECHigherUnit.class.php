@@ -7,8 +7,10 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
-require_once('BTECHigherQualification.class.php');
-require_once('BTECUnit.class.php');
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECHigherQualification.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
 class BTECHigherUnit extends BTECUnit {	
 	
 	function BTECHigherUnit($unitID, $params, $loadParams)

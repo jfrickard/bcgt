@@ -37,8 +37,15 @@ $PAGE->set_heading(get_string('edituserscoursequal', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('edituserscoursequals', 'block_bcgt'));
 $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
-$PAGE->navbar->add(get_string('myDashboard', 'block_bcgt'),'my_dashboard.php?tab=dash','title');
-$PAGE->navbar->add(get_string('dashtabadm', 'block_bcgt'),'my_dashboard.php?tab=adm','title');
+if($courseID != -1)
+{
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($courseID));
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$courseID,'title');
+    $PAGE->navbar->add(get_string('editcoursequal','block_bcgt'), $CFG->wwwroot.
+            '/blocks/bcgt/forms/edit_course_qual.php?oCID='.
+            $originalCourseID.'&cID='.$courseID,'title');
+    
+}
 $PAGE->navbar->add(get_string('editcoursequalusers', 'block_bcgt'),null,'title');
 
 $jsModule = array(

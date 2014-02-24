@@ -14,6 +14,8 @@ require_once($CFG->dirroot.'/user/profile/lib.php');
 
 $cID = optional_param('cID', -1, PARAM_INT);
 $a = optional_param('a', '', PARAM_TEXT);
+$report = '';
+require_login();
 if($cID != -1)
 {
     $context = context_course::instance($cID);
@@ -22,14 +24,10 @@ else
 {
     $context = context_course::instance($COURSE->id);
 }
-$report = '';
-require_login();
+
 $PAGE->set_context($context);
 $import = new Import($a, null);
-if($a == 'pl')
-{
-    require_capability('block/bcgt:importpriorlearning', $context);
-}
+$import->check_capability($cID);
 $valid = true;
 $error = '';
 if(isset($_POST['import']) || isset($_POST['importcalc']) 
@@ -82,7 +80,7 @@ require_once($CFG->dirroot.'/blocks/bcgt/lib.php');
 load_javascript();
 $out = $OUTPUT->header();
 $out .= $import->get_header();
-$out .= '<div id="importBCGT">';
+$out .= '<div id="importBCGT" class="bcgt_div_container">';
 $out .= $import->get_tabs($cID);
 $out .= '<div id="importWrapper">';
 if((isset($_POST['import']) || isset($_POST['importcalc'])))

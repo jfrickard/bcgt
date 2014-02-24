@@ -8,6 +8,7 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
+global $CFG;
 require_once($CFG->dirroot.'/blocks/bcgt/classes/core/Criteria.class.php');
 class BTECCriteria extends Criteria {
     //put your code here

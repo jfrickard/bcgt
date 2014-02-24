@@ -396,6 +396,21 @@ class Project {
         $this->studentID = $studentID;
     }
     
+    function set_user_value($valueID)
+    {
+        $this->userValue = new Value($valueID);
+    }
+    
+    function set_user_target_grade($targetGradeID)
+    {
+        $this->userTargetGrade = new TargetGrade($targetGradeID);
+    }
+    
+    function set_user_comments($comments)
+    {
+        $this->userComments = addslashes($comments);
+    }
+    
     function set_user_values($valueID = -1, $targetGradeID = -1, $comments = '')
     {
         $this->userValue = new Value($valueID);
@@ -1088,15 +1103,27 @@ class Project {
         //there is a value and a ceta (targetgrade)
         if(isset($_POST['sID_'.$this->studentID.'_qID_'.$qualID.'_pID_'.$this->id.'_v']))
         {
+            $saveValue = true;
             $valueID = $_POST['sID_'.$this->studentID.'_qID_'.$qualID.'_pID_'.$this->id.'_v'];
         }
         if(isset($_POST['sID_'.$this->studentID.'_qID_'.$qualID.'_pID_'.$this->id.'_c']))
         {
+            $saveTarget = true;
             $targetGradeID = $_POST['sID_'.$this->studentID.'_qID_'.$qualID.'_pID_'.$this->id.'_c'];
         }
+        if($saveValue)
+        {
+            $this->set_user_value($valueID);
+        }
+        if($saveTarget)
+        {
+            $this->set_user_target_grade($targetGradeID);
+        }
         //now need to update or insert. 
-        $this->set_user_values($valueID, $targetGradeID);
-        $this->save_user_values($qualID);
+        if($saveValue || $saveTarget)
+        {
+            $this->save_user_values($this->id, true);
+        }
     }
 
     public function get_grid_heading($projects, 
@@ -1437,13 +1464,19 @@ class Project {
         return $DB->get_record_sql($sql, array($this->id, $qualID));
     }
     
-    public static function get_qual_assessments($qualID)
+    public static function get_qual_assessments($qualID, $projectID = -1)
     {
         global $DB;
         $sql = "SELECT distinct(project.id), project.* FROM {block_bcgt_project} project 
             JOIN {block_bcgt_activity_refs} refs ON refs.bcgtprojectid = project.id 
             WHERE refs.bcgtqualificationid = ?";
-        $projects = $DB->get_records_sql($sql, array($qualID));
+        $params = array($qualID);
+        if($projectID != -1)
+        {
+            $sql .= ' AND project.id = ?';
+            $params[] = $projectID;
+        }
+        $projects = $DB->get_records_sql($sql, $params);
         $retval = array();
         if($projects)
         {
@@ -1472,6 +1505,325 @@ class Project {
             LEFT OUTER JOIN {user} teacherup ON teacherup.id = userref.updatedbyuserid 
             WHERE ref.bcgtprojectid = ? AND ref.bcgtqualificationid = ? AND userref.userid = ?";
         return $DB->get_record_sql($sql, array($this->id, $this->studentQualID, $this->studentID));
+    }
+    
+    
+    
+    
+    
+    
+    //ASSIGNMENT STUFF:
+    public function is_course_mod_attached_qual($courseModuleID)
+    {
+        global $DB;
+        $sql = "SELECT * FROM {block_bcgt_activity_refs} refs WHERE coursemoduleid = ? ";
+        $params = array($courseModuleID);
+        if($DB->get_records_sql($sql, $params))
+        {
+            return true;
+        }
+        return false;
+    }
+    
+    public function get_users_on_course_mod($courseModule)
+    {
+        //need to get all of the users that are on this course module. 
+        //courseID and GroupingID
+        //find all 'students'
+        //if groupingID != -1 then find all of the students in that grouping. 
+        global $DB;
+        $sql = "SELECT distinct(user.id), user.* FROM {user} user 
+            JOIN {role_assignments} ra ON ra.userid = user.id 
+            JOIN {role} r ON r.id = ra.roleid 
+            JOIN {context} con ON con.id = ra.contextid 
+            JOIN {course} course ON course.id = con.instanceid 
+            JOIN {block_bcgt_course_qual} coursequal ON coursequal.courseid = course.id 
+            JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = coursequal.bcgtqualificationid AND
+            userqual.userid = user.id
+            JOIN {role} rolequal ON rolequal.id = userqual.roleid";
+        if($courseModule->groupingid)
+        {
+            $sql .= " JOIN {groupings} groupings ON groupings.courseid = course.id 
+                JOIN {groupings_groups} gg ON gg.groupingid = groupings.id 
+                JOIN {groups_members} members ON members.groupid = gg.groupid AND members.userid = user.id ";
+        }
+        $sql .= " WHERE course.id = ? AND rolequal.shortname = ?";
+        $params = array();
+        $params[] = $courseModule->course;
+        $params[] = 'student';
+        if($courseModule->groupingid)
+        {
+            $sql .= " AND groupings.id = ?";
+            $params[] = $courseModule->groupingid;
+        }
+        return $DB->get_records_sql($sql, $params);
+    }
+    
+    protected function get_users_quals_on_poject($userID, $courseModuleID)
+    {
+        global $DB;
+        $sql = "SELECT distinct(qual.id), qual.* FROM {block_bcgt_qualification} qual 
+            JOIN {block_bcgt_activity_refs} refs ON refs.bcgtqualificationid = qual.id 
+            JOIN {block_bcgt_user_qual} userqual ON userqual.bcgtqualificationid = qual.id 
+            WHERE userqual.userid = ? AND refs.coursemoduleid = ?";
+        return $DB->get_records_sql($sql, array($userID, $courseModuleID));
+    }
+    
+    public function get_course_mod_units_criteria($courseModuleID, $qualID = -1)
+    {
+        global $DB;
+        $sql = "SELECT * FROM {block_bcgt_activity_refs} WHERE coursemoduleid = ?";
+        $params = array($courseModuleID);
+        if($qualID != -1)
+        {
+            $sql .= ' AND bcgtqualificationid = ?';
+            $params[] = $qualID;
+        }
+        return $DB->get_records_sql($sql, $params);
+    }
+    
+    public function update_users_qual_cron($userID, $courseModuleID, $action)
+    {
+        global $DB;
+        //get the qual from the unit, criteria and bcgtqualificationid
+        $quals = $this->get_users_quals_on_poject($userID, $courseModuleID);
+        if(!$quals)
+        {
+            mtrace("NO USER QUALS");
+            return false;
+        }
+        foreach($quals AS $qual)
+        {
+            $qualID = $qual->id;
+            //now load up the users qualification
+            $loadParams = new stdClass();
+            $loadParams->loadLevel = Qualification::LOADLEVELALL;
+            $qualification = Qualification::get_qualification_class_id($qualID, $loadParams);
+            if(!$qualification)
+            {
+                mtrace("couldnt load qual");
+                return false;
+            }
+            
+            //lets get the value
+            $value = new Value();
+            mtrace($action);
+            $value->create_default_object($action, $qualification->get_class_ID());
+            if(!$value->is_enabled())
+            {
+                mtrace("couldnt find value");
+                continue;
+            }
+            mtrace($value->get_short_value());
+            //get the units and criteria that are on this project. 
+            $unitsCriteria = $this->get_course_mod_units_criteria($courseModuleID, $qual->id);
+            if(!$unitsCriteria)
+            {
+                mtrace("no Units Criteria");
+                return false;
+            }
+            mtrace("loading : $userID");
+//            $qualification->load_student_information($userID, $loadParams);
+
+            foreach($unitsCriteria AS $unitCriteria)
+            {
+                //get the unit from the qual object
+                //get the criteria from the unit object
+                //update the users value
+                //save
+                $unit = $qualification->get_single_unit($unitCriteria->bcgtunitid);
+                if(!$unit)
+                {
+                    mtrace("no unit $unitCriteria->bcgtunitid");
+                    continue;
+                }
+
+                $criteria = $unit->get_single_criteria($unitCriteria->bcgtcriteriaid);
+                if(!$criteria)
+                {
+                    mtrace("no criteria $unitCriteria->bcgtcriteriaid");
+                    continue;
+                }
+                $criteria->load_student_information($userID, $qualID);
+                //does the user already have a value?
+                $currentUserValue = $criteria->get_student_value();
+                if($currentUserValue)
+                {
+                    $shortValue = $currentUserValue->get_short_value();
+                    if($shortValue != 'N/A' && $shortValue != 'WNS')
+                    {
+                        //if its WNS or N/A then we can overwrite it. 
+                        //WNS can be overwritten with IN or LATE. 
+                        mtrace("shortvalue already found : ($shortValue) for UNITID = $unitCriteria->bcgtunitid AND criteria id $unitCriteria->bcgtcriteriaid");
+                        continue;
+                    }
+                }
+                mtrace($value->get_short_value());
+                mtrace($value->get_id());
+                $criteria->set_student_value($value);
+                mtrace("save student");
+                $criteria->save_student($qualID, true);
+            }
+        }
+    }
+    
+    public static function get_qual_mods_by_unit($courseID = -1, $qualID = -1, 
+            $groupingID = -1, $cmID = -1)
+    {
+        global $DB;
+        $sql = "SELECT refs.id, refs.bcgtunitid, refs.bcgtcriteriaid, crit.name, refs.coursemoduleid 
+            FROM {block_bcgt_activity_refs} refs 
+            JOIN {block_bcgt_criteria} crit ON crit.id = refs.bcgtcriteriaid";
+        if($courseID != -1 || $groupingID != -1)
+        {
+            $sql .= " JOIN {course_modules} mods ON mods.id = refs.coursemoduleid";
+        }
+        $params = array();
+        if($courseID != -1 || $qualID != -1 || $groupingID != -1)
+        {
+            $and = false; 
+            $sql .= " WHERE";
+            if($courseID != -1)
+            {
+                $sql .= " mods.course = ?";
+                $params[] = $courseID;
+                $and = true;
+            }
+            if($qualID != -1)
+            {
+                if($and)
+                {
+                    $sql .= ' AND';
+                }
+                $sql .= " refs.bcgtqualificationid = ?";
+                $params[] = $qualID;
+                $and = true;
+            }
+            if($groupingID != -1)
+            {
+                if($and)
+                {
+                    $sql .= ' AND';
+                }
+                $sql .= " mods.groupingid = ?";
+                $params[] = $groupingID;
+                $and = true;
+            }
+        }
+        if($cmID != -1)
+        {
+            $sql .= " AND refs.coursemoduleid = ?";
+            $params[] = $cmID;
+        }
+        $records = $DB->get_records_sql($sql, $params);
+        if($records)
+        {
+            $retval = array();
+            foreach($records AS $record)
+            {
+                if(array_key_exists($record->bcgtunitid, $retval))
+                {
+                    $criteriaArray = $retval[$record->bcgtunitid];
+                }
+                else
+                {
+                    $criteriaArray = array();
+                }
+                if(array_key_exists($record->bcgtcriteriaid, $criteriaArray))
+                {
+                    $courseModuleArray = $criteriaArray[$record->bcgtcriteriaid];                
+                }
+                else
+                {
+                    $courseModuleArray = array();
+                }
+                $coureModuleArray[$record->coursemoduleid] = $record->coursemoduleid;
+                $criteriaArray[$record->bcgtcriteriaid] = $coureModuleArray;
+                $retval[$record->bcgtunitid] = $criteriaArray;
+            }
+            return $retval;
+        }
+        return false;
+        
+        
+    }
+    
+    /**
+     * This will check if this course has any qualifications, and that any 
+     * of these can be linked with mods. 
+     * It will then display a blank form
+     * or it will display the update form. 
+     * @param type $couseModuleID
+     * @return string
+     */
+    public static function display_bcgt_mod_tracker_options($couseModuleID, $courseID)
+    {
+        $retval = '';
+        //has the course got quals that can be associated with assignments?
+        $families = get_course_qual_families($courseID, array('BTEC'));
+        if($families)
+        {
+            foreach($families AS $family)
+            {
+                $qualificationClass = Qualification::get_plugin_class($family->id);
+                if($qualificationClass)
+                {
+                    $retval .= $qualificationClass::get_mod_tracker_options($couseModuleID, $courseID);
+                }
+            }
+        }
+        //if yes
+        
+        //display the grid. 
+        return $retval;
+    }
+    
+    /**
+     * This will be called on save of the mod on a course.
+     * This will check if this course has any qualifications, and that any 
+     * of these can be linked with mods. 
+     * Then it will save the ones from the form into the database. 
+     * @param type $couseModuleID
+     * @return boolean
+     */
+    public static function process_bcgt_mod_tracker_options($couseModuleID, $courseID)
+    {
+        //this needs to get all of the ones saved. 
+        $families = get_course_qual_families($courseID, array('BTEC'));
+        if($families)
+        {
+            foreach($families AS $family)
+            {
+                $qualificationClass = Qualification::get_plugin_class($family->id);
+                if($qualificationClass)
+                {
+                    $qualificationClass::process_mod_tracker_options($couseModuleID, $courseID);
+                }
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Deletes any activity refs (mod tracker links) that have a coursemoduleid that is no longer
+     * in the coursemodules table. 
+     * @global type $DB
+     */
+    public static function delete_redundant_bcgt_mod_tracker_options()
+    {
+        //find any activity refs that dont have an associated courseModule 
+        //in the course module table anymore. 
+        global $DB;
+        $sql = "SELECT * FROM {block_bcgt_activity_refs} refs WHERE coursemoduleid NOT IN (
+            SELECT id FROM {course_modules})";
+        $records = $DB->get_records_sql($sql, array());
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                $DB->delete_records('block_bcgt_activity_refs', array("id"=>$record->id));
+            }
+        }
     }
 }
 

@@ -32,12 +32,12 @@ $cID = optional_param('cID', -1, PARAM_INT);
 if(isset($_POST['editStudentsUnits']))
 {
     //then redirect to edit students units
-    redirect('edit_students_units.php?a=c&cID='.$cID);
+    redirect('edit_students_units.php?a=c&cID='.$cID.'&oCID='.$originalCourseID);
 }
 if(isset($_POST['editStudentsQuals']))
 {
     //then redirect to edit students quals
-    redirect('edit_course_qual_user.php?cID='.$cID);
+    redirect('edit_course_qual_user.php?cID='.$cID.'&oCID='.$originalCourseID);
 }
 
 $addQuals = isset($_POST['addselect']) ? $_POST['addselect'] : array();
@@ -83,12 +83,20 @@ $PAGE->set_title(get_string('editcoursequal', 'block_bcgt'));
 $PAGE->set_heading(get_string('editcoursequal', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('editcoursequal', 'block_bcgt'));
-if($originalCourseID != 1 && $originalCourseID != -1)
+if($originalCourseID != -1 && $originalCourseID != 1)
 {
     global $DB;
     $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($originalCourseID));
     $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
     $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$originalCourseID,'title');
+    $PAGE->navbar->add(get_string('editcoursequal', 'block_bcgt'),null,'title');
+}
+elseif($cID != 1)
+{
+    global $DB;
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($cID));
+    $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$cID,'title');
     $PAGE->navbar->add(get_string('editcoursequal', 'block_bcgt'),null,'title');
 }
 else

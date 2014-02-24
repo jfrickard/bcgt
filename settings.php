@@ -71,7 +71,7 @@ $settings->add(new admin_setting_configtext(
 
 //ALEVELS
 $settings->add(new admin_setting_configcheckbox(
-        'bcgt/alevelusefa',
+        'bcgt/usefa',
         get_string('labelalevelusefa', 'block_bcgt'),
         get_string('descalevelusefa', 'block_bcgt'),
         '0'
@@ -167,7 +167,16 @@ $settings->add(new admin_setting_configtext(
         get_string('labelbteclockedcolumnswidth', 'block_bcgt'),
         get_string('descbteclockedcolumnswidth', 'block_bcgt'),
         '430'
-        ));          
+        ));   
+
+$settings->add(new admin_setting_configtext(
+        'bcgt/bteclockedcolumnswidthclass',
+        get_string('labelbteclockedcolumnswidthclass', 'block_bcgt'),
+        get_string('descbteclockedcolumnswidthclass', 'block_bcgt'),
+        '250'
+        ));
+
+
 
 $settings->add(new admin_setting_configtext(
         'bcgt/logoimgurl',
@@ -182,6 +191,89 @@ $settings->add(new admin_setting_configcheckbox(
         get_string('descshowcoursecategories', 'block_bcgt'),
         '0'
         ));
+
+$settings->add(new admin_setting_configcheckbox(
+        'bcgt/usegroupsingradetracker',
+        get_string('labelusegroupsingradetracker', 'block_bcgt'),
+        get_string('descusegroupsingradetracker', 'block_bcgt'),
+        '0'
+        ));
+
+$settings->add(new admin_setting_configtext(
+        'bcgt/fullcoursegroupname',
+        get_string('labelfullcoursegroupname', 'block_bcgt'),
+        get_string('descfullcoursegroupname', 'block_bcgt'),
+        'idnumber'
+        )); 
+
+$settings->add(new admin_setting_configtext(
+        'bcgt/metacoursegroupnames',
+        get_string('labelmetacoursegroupnames', 'block_bcgt'),
+        get_string('descmetacoursegroupnames', 'block_bcgt'),
+        '[idnumber]{_}[groupname]'
+        ));
+
+$settings->add(new admin_setting_configcheckbox(
+        'bcgt/usecrongroupsync',
+        get_string('labelusecrongroupsync', 'block_bcgt'),
+        get_string('descusecrongroupsync', 'block_bcgt'),
+        '0'
+        ));
+
+$settings->add(new admin_setting_configcheckbox(
+        'bcgt/useassignmentbtecautoupdate',
+        get_string('labelassignmentbtecautoupdate', 'block_bcgt'),
+        get_string('descassignmentbtecautoupdate', 'block_bcgt'),
+        '0'
+        ));
+
+//$settings->add(new admin_setting_configcheckbox(
+//        'bcgt/assignmentcheckajax',
+//        get_string('labelassignmentcheckajax', 'block_bcgt'),
+//        get_string('descassignmentcheckajax', 'block_bcgt'),
+//        '1'
+//        ));
+
+$settings->add(new admin_setting_configselect(
+            'bcgt/assignmentfrequencycheck',
+            get_string('labelassignmentfrequencycheck', 'block_bcgt'),
+            get_string('labelassignmentfrequencycheck', 'block_bcgt'),
+            'daily',
+            array(
+                'daily'  => get_string('assignmentfrequencycheckdaily', 'block_bcgt'),
+                'hourly' => get_string('assignmentfrequencycheckhourly', 'block_bcgt'),
+                'never' => get_string('assignmentfrequencychecknever', 'block_bcgt'),
+            )
+        )); 
+
+$settings->add(new admin_setting_configselect(
+            'bcgt/assignmenttimecheck',
+            get_string('labelassignmenttimecheck', 'block_bcgt'),
+            get_string('descassignmenttimecheck', 'block_bcgt'),
+            '24',
+            array(
+                '1'  => "1 am",'2' => "2 am",'3' => " 3 am",'4' => " 4 am",'5' => " 5 am",
+                '6' => " 6 am",'7' => " 7 am",'8' => " 8 am",'9' => " 9 am",'10' => " 10 am",
+                '11' => " 11 am",'12' => " 12 pm",'13' => " 1 pm",'14' => " 2 pm",'15' => " 3 pm",
+                '16' => " 4 pm",'17' => " 5 pm",'18' => " 6 pm",'19' => " 7 pm",'20' => " 8 pm",
+                '21' => " 9 pm",'22' => " 10 pm",'23' => " 11 pm",'24' => " 12 am",
+            )
+        ));
+
+$settings->add(new admin_setting_configtext(
+        'bcgt/modscheckedcronupdate',
+        get_string('labelmodscheckedcronupdate', 'block_bcgt'),
+        get_string('descmodscheckedcronupdate', 'block_bcgt'),
+        'assign,quiz'
+        )); 
+
+$settings->add(new admin_setting_configcheckbox(
+        'bcgt/modstrackercheckcoursevisible',
+        get_string('labelmodstrackercheckcoursevisible', 'block_bcgt'),
+        get_string('descmodstrackercheckcoursevisible', 'block_bcgt'),
+        '1'
+        )); 
+
 
 
 //$settings->add(new admin_setting_configcheckbox(
@@ -206,5 +298,10 @@ $settings->add(new admin_setting_configcheckbox(
 //        ));
 
     
-
-?>
+// Tutor role short name
+$settings->add(new admin_setting_configtext(
+        'bcgt/tutorrole',
+        get_string('tutorroleshortname', 'block_bcgt'),
+        get_string('tutorroleshortname:desc', 'block_bcgt'),
+        ''
+));

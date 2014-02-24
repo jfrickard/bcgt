@@ -497,7 +497,7 @@ class Reporting {
             weightedbreakdown.entryscoreupper AS wentryscoreupper, weightedbreakdown.entryscorelower as wentryscorelower, 
             weightedgrades.id AS wtargetgradesid, weightedgrades.grade as wgrade, weightedgrades.ucaspoints as wucaspoints, weightedgrades.upperscore 
             AS wupperscore, weightedgrades.lowerscore as wlowerscore, weightedgrades.ranking as wranking, grades.bcgttargetqualid AS bcgttargetqualid
-            , usertrgts.bcgtqualificationid as bcgtqualificationid , q.name as qualname
+            , usertrgts.bcgtqualificationid as bcgtqualificationid , q.name as qualname, usertrgts.id as usercoursetargetsid 
             FROM {block_bcgt_user_course_trgts} usertrgts 
             LEFT OUTER JOIN {block_bcgt_target_breakdown} breakdown on breakdown.id = bcgttargetbreakdownid 
             LEFT OUTER JOIN {block_bcgt_target_grades} grades ON grades.id = bcgttargetgradesid 

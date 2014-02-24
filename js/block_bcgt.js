@@ -33,6 +33,19 @@ M.block_bcgt.init = function(Y) {
 //        });
 //    }
 
+    var goToCourse = $('#courseGo');
+    if(goToCourse)
+    {
+       $('#courseGo').on('click',function(e){
+            //then we want to go to that course (unless its -1)
+            var courseID = $('#gotocourse').find(":selected").val();
+            if(courseID == -1)
+            {
+                e.preventDefault();
+                location = '#';
+            }
+        });       
+    }
 };
 
 M.block_bcgt.inittrackerstab = function(Y) {
@@ -41,16 +54,69 @@ M.block_bcgt.inittrackerstab = function(Y) {
     if(buttons)
     {
         buttons.each( function(button){
-            button.on('click', function(event){
+            button.on('click', function(event){  
                 var qual = button.getAttribute('id');
-                //sqrh_$qual->id
                 var quals = qual.split("_");
                 var qualID = quals[1];
-                
+                var type = quals[2];
+                var div = Y.one('#sqrc_'+qualID+'_'+type);
+                if(div)
+                {
+                    div.set('innerHTML', '<img src="'+M.cfg.wwwroot+'/blocks/bcgt/pix/ajax-loader.gif" alt="" />');
+                }
+                //sqrh_$qual->id
                 var data = {
                     method: 'POST',
                     data: {
-                        'qID' : qualID 
+                        'qID' : qualID,
+                        'grID' : -1,
+                        'type' : type
+                    },
+                    dataType: 'json',
+                    on: {
+                        success: display_simple_qual_report
+                    }
+                }
+                var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_simple_qual_report.php";
+                var request = Y.io(url, data);
+                
+            });
+        });
+    }
+    applyReportingTT();
+    //all of the initialised functions required. 
+//    var searchButton = Y.one('#search');
+//    searchButton.on('click', helloWorld);
+//    
+//    var searchText = Y.one('#searchStudent');
+//    searchText.on('change', helloWorld);
+};
+
+M.block_bcgt.initgroupstab = function(Y) 
+{
+    
+    var buttons = Y.all('.simplegroupreportheading');
+    if(buttons)
+    {
+        buttons.each( function(button){
+            button.on('click', function(event){
+                var grouping = button.getAttribute('id');
+                //this is actually grouping
+                var groupings = grouping.split("_");
+                var groupingID = groupings[1];
+                var type = groupings[2];
+                var div = Y.one('#sqrc_'+groupingID+'_'+type);
+                if(div)
+                {
+                    div.set('innerHTML', '<img src="'+M.cfg.wwwroot+'/blocks/bcgt/pix/ajax-loader.gif" alt="" />');
+                }
+                //sqrh_$qual->id
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'grID' : groupingID,
+                        'qID' : -1,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -78,12 +144,46 @@ function display_simple_qual_report(id, o)
     var json = Y.JSON.parse(o.responseText);
     if(json.retval != null)
     {
+        var tab = json.tab;
+        
         var qualID = json.qualid;
+        var groupID = json.groupingid;
         var display = json.retval;
-        var div = Y.one('#sqrc_'+qualID);
+        var type = json.type;
+        var idUse;
+        if(qualID && qualID != -1)
+        {
+            idUse = qualID;
+        }
+        else if(groupID && groupID != -1)
+        {
+            idUse = groupID;
+        }
+        var div = Y.one('#sqrc_'+idUse+'_'+type);
         if(div)
         {
+            //clear the loading gif first
+            div.set('innerHTML', '');
             div.set('innerHTML', display);
+        }
+        //clear the loading gif on the tabs
+        $('.'+idUse+'loading').html('');
+        if(tab == 'co' && $('#classGrid_'+idUse+'_'+type))
+        {
+            var oTable = $('#classGrid_'+idUse+'_'+type).dataTable( {
+                "sScrollX": "100%",
+                "sScrollY": "600px",
+                "bScrollCollapse": true,
+                "bPaginate": false,
+                "bSort":false,
+                "bInfo":false,
+                "bFilter":false
+            });
+
+            var fCol = new FixedColumns( oTable, {
+                        "iLeftColumns": 3,
+                        "iLeftWidth": 220 
+                    } );
         }
     }   
     applyReportingTT();
@@ -96,13 +196,24 @@ function applyReportingTT()
     {
         tabs.each( function(tab){
             tab.on('click', function(event){
+                var id = tab.getAttribute('id');
+                //loading symbol!
+                var span = Y.one('#'+id+'loading');
+                if(span)
+                {
+                    span.set('innerHTML', '<img src="'+M.cfg.wwwroot+'/blocks/bcgt/pix/ajax-loader.gif" alt="" />');
+                }
                 var qualID = tab.getAttribute('qual');
+                var groupID = tab.getAttribute('group');
                 var tabType = tab.getAttribute('tab');
+                var type = tab.getAttribute('type');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
-                        'tab' : tabType
+                        'tab' : tabType,
+                        'grID' : groupID,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -116,53 +227,80 @@ function applyReportingTT()
         });
     }
     
-    var edit = Y.one('#edit');
-    if(edit)
+    var close = Y.all('.closereport');
+    if(close)
     {
-        edit.on('click', function(event){
-            event.preventDefault();
-            var qualID = edit.getAttribute('qual');
-            var tabType = edit.getAttribute('tab');
-            var data = {
-                method: 'POST',
-                data: {
-                    'qID' : qualID,
-                    'tab' : tabType,
-                    'edit' : true
-                },
-                dataType: 'json',
-                on: {
-                    success: display_simple_qual_report
+        close.each( function(close){
+            close.on('click', function(event){
+                var id = close.getAttribute('id');
+                var type = close.getAttribute('type');
+                var div = Y.one('#sqrc_'+id+'_'+type);
+                if(div)
+                {
+                    div.set('innerHTML', '');  
                 }
-            }
-            var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_simple_qual_report.php";
-            var request = Y.io(url, data);
-
+            });
         });
     }
     
-    var view = Y.one('#view');
-    if(view)
+    var edits = Y.all('.edit');
+    if(edits)
     {
-        view.on('click', function(event){
-            event.preventDefault();
-            var qualID = view.getAttribute('qual');
-            var tabType = view.getAttribute('tab');
-            var data = {
-                method: 'POST',
-                data: {
-                    'qID' : qualID,
-                    'tab' : tabType,
-                    'edit' : false
-                },
-                dataType: 'json',
-                on: {
-                    success: display_simple_qual_report
+        edits.each(function(edit){
+            edit.on('click', function(event){
+                event.preventDefault();
+                var qualID = edit.getAttribute('qual');
+                var groupID = edit.getAttribute('group');
+                var tabType = edit.getAttribute('tab');
+                var type = edit.getAttribute('tabtype');
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'qID' : qualID,
+                        'tab' : tabType,
+                        'grID' : groupID,
+                        'edit' : true,
+                        'type' : type
+                    },
+                    dataType: 'json',
+                    on: {
+                        success: display_simple_qual_report
+                    }
                 }
-            }
-            var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_simple_qual_report.php";
-            var request = Y.io(url, data);
+                var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_simple_qual_report.php";
+                var request = Y.io(url, data);
+            });
+        });
+    }
+    
+    var views = Y.all('.view');
+    if(views)
+    {
+        views.each(function(view){
+            view.on('click', function(event){
+                event.preventDefault();
+                var qualID = view.getAttribute('qual');
+                var groupID = view.getAttribute('group');
+                var tabType = view.getAttribute('tab');
+                var type = view.getAttribute('tabtype');
+                var data = {
+                    method: 'POST',
+                    data: {
+                        'qID' : qualID,
+                        'tab' : tabType,
+                        'grID' : groupID,
+                        'edit' : false,
+                        'type' : type
+                    },
+                    dataType: 'json',
+                    on: {
+                        success: display_simple_qual_report
+                    }
+                }
+                var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_simple_qual_report.php";
+                var request = Y.io(url, data);
 
+            });
         });
     }
     
@@ -172,19 +310,26 @@ function applyReportingTT()
         edittargets.each( function(edittarget){
             edittarget.on('change', function(event){
                 var qualID = edittarget.getAttribute('qual');
+                var groupID = edittarget.getAttribute('group');
+                var idUse = qualID;
+                if(groupID && groupID != -1)
+                {
+                    idUse = groupID;
+                }
                 var sID = edittarget.getAttribute('sid');
                 var index = Y.one("#t_"+qualID+"_s_"+sID).get('selectedIndex');
                 var value = Y.one("#t_"+qualID+"_s_"+sID).get("options").item(index).getAttribute('value');
                 var cID = edittarget.getAttribute('cid');
                 var type = edittarget.getAttribute('type');
-                var index = Y.one("#uf_"+qualID).get('selectedIndex');
-                var ufilter = Y.one("#uf_"+qualID).get("options").item(index).getAttribute('value');
-                var index = Y.one("#tf_"+qualID).get('selectedIndex');
-                var tfilter = Y.one("#tf_"+qualID).get("options").item(index).getAttribute('value');
+                var index = Y.one("#uf_"+idUse).get('selectedIndex');
+                var ufilter = Y.one("#uf_"+idUse).get("options").item(index).getAttribute('value');
+                var index = Y.one("#tf_"+idUse).get('selectedIndex');
+                var tfilter = Y.one("#tf_"+idUse).get("options").item(index).getAttribute('value');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'ufilter' : ufilter,
                         'tfilter' : tfilter,
                         'value' : value,
@@ -210,19 +355,26 @@ function applyReportingTT()
         editasps.each( function(editasp){
             editasp.on('change', function(event){
                 var qualID = editasp.getAttribute('qual');
+                var groupID = editasp.getAttribute('group');
+                var idUse = qualID;
+                if(groupID && groupID != -1)
+                {
+                    idUse = groupID;
+                }
                 var sID = editasp.getAttribute('sid');
                 var index = Y.one("#a_"+qualID+"_s_"+sID).get('selectedIndex');
                 var value = Y.one("#a_"+qualID+"_s_"+sID).get("options").item(index).getAttribute('value');
                 var cID = editasp.getAttribute('cid');
                 var type = editasp.getAttribute('type');
-                var index = Y.one("#uf_"+qualID).get('selectedIndex');
-                var ufilter = Y.one("#uf_"+qualID).get("options").item(index).getAttribute('value');
-                var index = Y.one("#tf_"+qualID).get('selectedIndex');
-                var tfilter = Y.one("#tf_"+qualID).get("options").item(index).getAttribute('value');
+                var index = Y.one("#uf_"+idUse).get('selectedIndex');
+                var ufilter = Y.one("#uf_"+idUse).get("options").item(index).getAttribute('value');
+                var index = Y.one("#tf_"+idUse).get('selectedIndex');
+                var tfilter = Y.one("#tf_"+idUse).get("options").item(index).getAttribute('value');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'ufilter' : ufilter,
                         'tfilter' : tfilter,
                         'value' : value,
@@ -249,20 +401,30 @@ function applyReportingTT()
         unitFilters.each( function(unitFilter){
             unitFilter.on('change', function(event){
                 var qualID = unitFilter.getAttribute('qual');
+                var groupID = unitFilter.getAttribute('group');
                 var editing = Y.one("#editing").get("value");
-                var index = Y.one("#uf_"+qualID).get('selectedIndex');
-                var ufilter = Y.one("#uf_"+qualID).get("options").item(index).getAttribute('value');
-                var index = Y.one("#tf_"+qualID).get('selectedIndex');
-                var tfilter = Y.one("#tf_"+qualID).get("options").item(index).getAttribute('value');
+                var idUse = qualID;
+                if(groupID && groupID != -1)
+                {
+                    //then we are using the groupid
+                    idUse = groupID;
+                }
+                var index = Y.one("#uf_"+idUse).get('selectedIndex');
+                var ufilter = Y.one("#uf_"+idUse).get("options").item(index).getAttribute('value');
+                var index = Y.one("#tf_"+idUse).get('selectedIndex');
+                var tfilter = Y.one("#tf_"+idUse).get("options").item(index).getAttribute('value');
                 var tabType = unitFilter.getAttribute('tab');
+                var type = unitFilter.getAttribute('tabtype');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'ufilter' : ufilter,
                         'tfilter' : tfilter,
                         'tab' : tabType,
-                        'edit' : editing
+                        'edit' : editing,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -282,20 +444,30 @@ function applyReportingTT()
         targetFilters.each( function(targetFilter){
             targetFilter.on('change', function(event){
                 var qualID = targetFilter.getAttribute('qual');
+                var groupID = targetFilter.getAttribute('group');
                 var editing = Y.one("#editing").get("value");
-                var index = Y.one("#uf_"+qualID).get('selectedIndex');
-                var ufilter = Y.one("#uf_"+qualID).get("options").item(index).getAttribute('value');
-                var index = Y.one("#tf_"+qualID).get('selectedIndex');
-                var tfilter = Y.one("#tf_"+qualID).get("options").item(index).getAttribute('value');
+                var idUse = qualID;
+                if(groupID && groupID != -1)
+                {
+                    //then we are using the groupid
+                    idUse = groupID;
+                }
+                var index = Y.one("#uf_"+idUse).get('selectedIndex');
+                var ufilter = Y.one("#uf_"+idUse).get("options").item(index).getAttribute('value');
+                var index = Y.one("#tf_"+idUse).get('selectedIndex');
+                var tfilter = Y.one("#tf_"+idUse).get("options").item(index).getAttribute('value');
                 var tabType = targetFilter.getAttribute('tab');
+                var type = targetFilter.getAttribute('tabtype');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'ufilter' : ufilter,
                         'tfilter' : tfilter,
                         'tab' : tabType,
-                        'edit' : editing
+                        'edit' : editing,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -316,24 +488,34 @@ function applyReportingTT()
             sorthead.on('click', function(event){
                 event.preventDefault();
                 var qualID = sorthead.getAttribute('qual');
+                var groupID = sorthead.getAttribute('group');
+                var idUse = qualID;
+                if(groupID && groupID != -1)
+                {
+                    //then we are using the groupid
+                    idUse = groupID;
+                }
                 var editing = Y.one("#editing").get("value");
-                var index = Y.one("#uf_"+qualID).get('selectedIndex');
-                var ufilter = Y.one("#uf_"+qualID).get("options").item(index).getAttribute('value');
-                var index = Y.one("#tf_"+qualID).get('selectedIndex');
-                var tfilter = Y.one("#tf_"+qualID).get("options").item(index).getAttribute('value');
+                var index = Y.one("#uf_"+idUse).get('selectedIndex');
+                var ufilter = Y.one("#uf_"+idUse).get("options").item(index).getAttribute('value');
+                var index = Y.one("#tf_"+idUse).get('selectedIndex');
+                var tfilter = Y.one("#tf_"+idUse).get("options").item(index).getAttribute('value');
                 var tabType = sorthead.getAttribute('tab');
                 var currentSort = Y.one("#sorting").get("value");
                 var thisSort = sorthead.getAttribute('sortname');
                 var currentSort = currentSort + ',' + thisSort;
+                var type = sorthead.getAttribute('tabtype');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'ufilter' : ufilter,
                         'tfilter' : tfilter,
                         'tab' : tabType,
                         'edit' : editing,
-                        'sort' : currentSort
+                        'sort' : currentSort,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -354,16 +536,20 @@ function applyReportingTT()
             sorthead.on('click', function(event){
                 event.preventDefault();
                 var qualID = sorthead.getAttribute('qual');
+                var groupID = sorthead.getAttribute('group');
                 var tabType = sorthead.getAttribute('tab');
                 var currentSort = Y.one("#usorting").get("value");
                 var thisSort = sorthead.getAttribute('sortname');
                 var currentSort = currentSort + ',' + thisSort;
+                var type = sorthead.getAttribute('tabtype');
                 var data = {
                     method: 'POST',
                     data: {
                         'qID' : qualID,
+                        'grID' : groupID,
                         'tab' : tabType,
-                        'sort' : currentSort
+                        'sort' : currentSort,
+                        'type' : type
                     },
                     dataType: 'json',
                     on: {
@@ -375,7 +561,7 @@ function applyReportingTT()
                 
             });
         });
-    }
+    }    
 }
 
 M.block_bcgt.initeditqual = function(Y) {
@@ -1016,11 +1202,33 @@ M.block_bcgt.initcoursequalsusers = function(Y) {
 }
 
 M.block_bcgt.initgridselect = function(Y) {
+    
+    //if the gridselect div isnt empty
+    //then lets navigate to it
+    $( document ).ready(function() {
+        var div = Y.one('#gridresults');
+        if(div && div.get('innerHTML') != '')
+        {
+            $('html, body').animate({ scrollTop: $('#gridresults').offset().top }, 'slow');  
+        }
+    });
+    
     var qual = Y.one('#qual');
     qual.on('change', function(e) {
         var index = Y.one("#qual").get('selectedIndex');
         var qualID = Y.one("#qual").get("options").item(index).getAttribute('value');
         var grid = Y.one('#grid').get('value');
+        var group = Y.one('#group');
+        if(group)
+        {
+            //reset the qual selected index
+            group.set('selectedIndex',-1);
+        }
+        var course = Y.one('#course');
+        if(course)
+        {
+            course.set('selectedIndex', -1);
+        }
         if(qualID != -1 && (grid == 'c' || grid == 'a'))
         {
             e.preventDefault();
@@ -1031,29 +1239,104 @@ M.block_bcgt.initgridselect = function(Y) {
             //then location will be the subject grid with the qualid passed in
             if(grid == 'c')
             {
-                 location = '../grids/class_grid.php?qID='+qualID+'&cID='+cID+'&g=c';   
+//                location = '../grids/class_grid.php?qID='+qualID+'&cID='+cID+'&g=c';   
             }
             else
             {
-                location = '../grids/ass_grid_class.php?qID='+qualID+'&cID='+cID+'&g=a';
+//                location = '../grids/ass_grid_class.php?qID='+qualID+'&cID='+cID+'&g=a';
             }
         }
-        else
+        else if(grid == 'u')
         {
-            Y.one('#gridselect').submit();
+//            Y.one('#gridselect').submit();
+            //then we want to update the 'myUnits'
+            var data = {
+                method: 'POST',
+                data: {
+                    'qID' : qualID,
+                    'sel' : 'mqual',
+                    'g' : grid
+                },
+                dataType: 'json',
+                on: {
+                    success: update_grid_select
+                }
+            }
+            var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_selects.php";
+            var request = Y.io(url, data);
         }
     });
     
+    var group = Y.one('#group');
+    if(group)
+    {
+        group.on('change', function(e){
+           //reset the qual selected index
+        var search = Y.one('#search');
+        if(search)
+        {
+            search.set('value', '');
+        }
+           Y.one('#qual').set('selectedIndex',-1);
+//           Y.one('#gridselect').submit();
+
+        });
+    }
+    
     var course = Y.one('#course');
     course.on('change', function(e) {
-        Y.one('#gridselect').submit();
+        var search = Y.one('#search');
+        if(search)
+        {
+            search.set('value', '');
+        }
+        Y.one('#qual').set('selectedIndex',-1);
+        var index = Y.one("#course").get('selectedIndex');
+        var courseID = Y.one("#course").get("options").item(index).getAttribute('value');
+          //then we want to update the 'mygroups'
+          var data = {
+              method: 'POST',
+              data: {
+                  'cID' : courseID,
+                  'sel' : 'mcourse',
+                  'g' : ''
+              },
+              dataType: 'json',
+              on: {
+                  success: update_grid_select
+              }
+          }
+          var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_selects.php";
+          var request = Y.io(url, data);
+//        Y.one('#gridselect').submit();
     });
     
     var acourse = Y.one('#acourse');
     if(acourse)
     {
         acourse.on('change', function(e) {
-        Y.one('#gridselect').submit();
+        
+        Y.one('#aqual').set('selectedIndex',-1);
+        Y.one('#qual').set('selectedIndex',-1);
+        Y.one('#course').set('selectedIndex',-1);
+//        Y.one('#gridselect').submit();
+//then we want to update the 'mygroups'
+            var index = Y.one("#acourse").get('selectedIndex');
+            var courseID = Y.one("#acourse").get("options").item(index).getAttribute('value');
+            var data = {
+              method: 'POST',
+              data: {
+                  'cID' : courseID,
+                  'sel' : 'acourse',
+                  'g' : ''
+              },
+              dataType: 'json',
+              on: {
+                  success: update_grid_select
+              }
+          }
+          var url = M.cfg.wwwroot+"/blocks/bcgt/ajax/get_selects.php";
+          var request = Y.io(url, data);
         });
     }
     
@@ -1061,6 +1344,18 @@ M.block_bcgt.initgridselect = function(Y) {
     if(aqual)
     {
         aqual.on('change', function(e) {
+                var agroup = Y.one('#agroup');
+                if(agroup)
+                {
+                    //reset the qual selected index
+                    agroup.set('selectedIndex',-1);
+                }
+                var acourse = Y.one('#acourse');
+                if(acourse)
+                {
+                    acourse.set('selectedIndex', -1);
+                }
+                Y.one('#qual').set('selectedIndex',-1);
                 var index = Y.one("#aqual").get('selectedIndex');
                 var qualID = Y.one("#aqual").get("options").item(index).getAttribute('value');
                 var grid = Y.one('#grid').get('value');
@@ -1071,18 +1366,28 @@ M.block_bcgt.initgridselect = function(Y) {
                     //then location will be the subject grid with the qualid passed in
                     if(grid == 'c')
                     {
-                         location = '../grids/class_grid.php?qID='+qualID+'&cID='+cID+'&g=c';   
+//                         location = '../grids/class_grid.php?qID='+qualID+'&cID='+cID+'&g=c';   
                     }
                     else
                     {
-                        location = '../grids/ass_grid_class.php?qID='+qualID+'&cID='+cID+'&g=a';
+//                        location = '../grids/ass_grid_class.php?qID='+qualID+'&cID='+cID+'&g=a';
                     }
                 }
                 else
                 {
-                    Y.one('#gridselect').submit();
+//                    Y.one('#gridselect').submit();
                 }
             });
+    }
+    
+    var agroup = Y.one('#agroup');
+    if(agroup)
+    {
+        agroup.on('change', function(e){
+           //reset the qual selected index
+           Y.one('#aqual').set('selectedIndex',-1);
+//           Y.one('#gridselect').submit();
+        });
     }
     
     
@@ -1090,7 +1395,7 @@ M.block_bcgt.initgridselect = function(Y) {
     if(student)
     {
         student.on('change', function(e) {
-        Y.one('#gridselect').submit();
+//        Y.one('#gridselect').submit();
         });
     }
     
@@ -1098,7 +1403,7 @@ M.block_bcgt.initgridselect = function(Y) {
     if(unit)
     {
         unit.on('change', function(e) {
-        Y.one('#gridselect').submit();
+//        Y.one('#gridselect').submit();
         });
     }
     
@@ -1106,7 +1411,7 @@ M.block_bcgt.initgridselect = function(Y) {
     if(assessment)
     {
         assessment.on('change', function(e) {
-        Y.one('#gridselect').submit();
+//        Y.one('#gridselect').submit();
         });
     }
     
@@ -1131,6 +1436,69 @@ M.block_bcgt.initgridselect = function(Y) {
     }
 }
 
+function update_grid_select(id, o)
+{
+    var data = o.responseText; // Response data.
+    var json = Y.JSON.parse(o.responseText);
+    var select = json.select;
+    if(select == 'mqual')
+    {
+        var option = build_selects('-1', 'Please select one ...');
+        //then we need to change the selects in the
+        $("#unitID").empty().append(option);
+        var units = json.units;
+        var length = (json.units).length;
+        for(var i=0;i<=length;i++)
+        {
+            if(typeof units[i] != 'undefined' && typeof units[i]["id"] != 'undefined' 
+                && typeof units[i]["uniqueid"] != 'undefined' && typeof units[i]["name"] != 'undefined')
+            {
+                  var option = build_selects(units[i]["id"], units[i]["uniqueid"]+' : '+units[i]["name"]);
+                $("#unitID").append(option);  
+            }
+        }
+    }
+    else if(select == 'mcourse')
+    {
+       var option = build_selects('-1', 'Please select one ...');
+        //then we need to change the selects in the
+        $("#group").empty().append(option);
+        var groups = json.groups;
+        var length = (json.groups).length;
+        for(var i=0;i<=length;i++)
+        {
+            if(typeof groups[i] != 'undefined' && typeof groups[i]["id"] != 'undefined' 
+                && typeof groups[i]["name"] != 'undefined')
+            {
+                  var option = build_selects(groups[i]["id"], groups[i]["name"]);
+                $("#group").append(option);  
+            }
+        } 
+    }
+    else if(select == 'acourse')
+    {
+       var option = build_selects('-1', 'Please select one ...');
+        //then we need to change the selects in the
+        $("#agroup").empty().append(option);
+        var groups = json.groups;
+        var length = (json.groups).length;
+        for(var i=0;i<=length;i++)
+        {
+            if(typeof groups[i] != 'undefined' && typeof groups[i]["id"] != 'undefined' 
+                && typeof groups[i]["name"] != 'undefined' && typeof groups[i]["shortname"] != 'undefined')
+            {
+                  var option = build_selects(groups[i]["id"], groups[i]["name"]+ ' - ' + groups[i]["shortname"]);
+                $("#agroup").append(option);  
+            }
+        } 
+    }
+}
+
+function build_selects(id, option)
+{
+    return $('<option></option>').attr("value", id).text(option);
+}
+
 M.block_bcgt.initgridstu = function(Y) {
     var student = Y.one('#studentChange');
     if(student)
@@ -1148,6 +1516,19 @@ M.block_bcgt.initgridstu = function(Y) {
             var qualID = Y.one("#qualChange").get("options").item(index).getAttribute('value');
             location = '../forms/grid_select.php?qID='+qualID;
         });
+    }
+    
+    var tabs = $('.ordertab');
+    if(tabs)
+    {
+           $('.ordertab').on('click',function(e){
+              e.preventDefault();
+              //submit the form
+              //get the value
+              var order = $(this).attr('order');
+              $('#order').attr('value', order);
+              $('#studentGridForm').submit();
+           }); 
     }
     
 }
@@ -1179,12 +1560,36 @@ M.block_bcgt.initgridunit = function(Y) {
     }
 }
 
+M.block_bcgt.initgridact = function(Y) {
+    
+    var qual = Y.one('#activityChange');
+    if (qual != null){
+        qual.on('change', function(e) {
+            Y.one('#actGridForm').submit();
+        });
+    }
+}
+
+M.block_bcgt.initgridgroupunit = function(Y) {
+    var unit = Y.one('#unitChange');
+    if (unit != null){
+        unit.on('change', function(e) {
+            Y.one('#unitGridForm').submit();
+        });
+    }
+}
+
 M.block_bcgt.initmygrid = function(Y) {
 
 }
 
 M.block_bcgt.initgridclass = function(Y) {
-
+    var qual = Y.one('#qualChange');
+    if (qual != null){
+        qual.on('change', function(e) {
+            Y.one('#classGridForm').submit();
+        });
+    }
 }
 
 M.block_bcgt.initactivities = function(Y) {

@@ -10,7 +10,9 @@
  *
  * @author mchaney
  */
-require_once('BTECQualification.class.php');
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECQualification.class.php');
 class BTECFirst2013Qualification extends BTECQualification{
     //put your code here
     

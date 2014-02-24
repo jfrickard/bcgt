@@ -3775,6 +3775,8 @@ function xmldb_block_bcgtbtec_upgrade($oldversion = 0)
         $record->ranking = 9;
         $DB->insert_record('block_bcgt_target_breakdown', $record);
         
+        //WRONG!
+        
         //Ext Certificate
         $record = new stdClass();
         $record->bcgttargetqualid = $l12ExtCert;      
@@ -4283,4 +4285,598 @@ function xmldb_block_bcgtbtec_upgrade($oldversion = 0)
             $DB->update_record('block_bcgt_value', $record);
         }
     }
+    
+    if($oldversion < 2014021700)
+    {
+	
+		// Changing nullability of field ucaspoints on table block_bcgt_target_grades to null
+        $table = new xmldb_table('block_bcgt_target_grades');
+        $field = new xmldb_field('ucaspoints', XMLDB_TYPE_NUMBER, '5, 2', null, null, null, null, 'grade');
+
+        // Launch change of nullability for field ucaspoints
+        $dbman->change_field_notnull($table, $field);
+		
+	
+        //the Pass/ Fa
+        //targetr grade
+        //breakdown
+        //level 1
+        $sql = "SELECT distinct(targetqual.id), targetqual.* FROM {block_bcgt_target_qual} targetqual 
+            JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
+            JOIN {block_bcgt_type_family} fam ON fam.id = type.bcgttypefamilyid 
+            JOIN {block_bcgt_subtype} sub ON sub.id = targetqual.bcgtsubtypeid 
+            JOIN {block_bcgt_level} level ON level.id = targetqual.bcgtlevelid 
+            WHERE level.trackinglevel = ? AND fam.family = ? 
+                AND sub.subtype = ?";
+        $record = $DB->get_record_sql($sql, array('Level 1', 'BTEC', 'Award'));
+        if($record)
+        {
+            //do we have any Pass and/or N/A?
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+        }
+
+        $record = $DB->get_record_sql($sql, array('Level 1', 'BTEC', 'Certificate'));
+        if($record)
+        {
+            //do we have any Pass and/or N/A?
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+        }
+
+        $record = $DB->get_record_sql($sql, array('Level 1', 'BTEC', 'Diploma'));
+        if($record)
+        {
+            //do we have any Pass and/or N/A?
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->targetgrade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_breakdown', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Pass'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Pass';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 1;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+
+            $targetGrade = $DB->get_record_sql('SELECT * FROM {block_bcgt_target_grades} WHERE bcgttargetqualid = ? AND grade = ?', array($record->id, 'Not Achieved'));
+            if(!$targetGrade)
+            {
+                $targeGrade = new stdClass();
+                $targeGrade->bcgttargetqualid = $record->id;      
+                $targeGrade->grade = 'Not Achieved';
+                $targeGrade->unitsscorelower = 0;
+                $targeGrade->unitsscoreupper = 0;
+                $targeGrade->ranking = 0;
+                $DB->insert_record('block_bcgt_target_grades', $targeGrade);
+            }
+        }
+
+        //the n/a for all values
+        //find all of the BTEC target quals. 
+        $sql = "SELECT distinct(targetqual.id), targetqual.* FROM {block_bcgt_target_qual} targetqual 
+            JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
+            JOIN {block_bcgt_type_family} family ON family.id = type.bcgttypefamilyid WHERE family.family = ?";
+        $targetQuals = $DB->get_records_sql($sql, array('BTEC'));
+        if($targetQuals)
+        {
+            foreach($targetQuals AS $targetQual)
+            {
+                $notA = $DB->get_record_sql("SELECT * FROM {block_bcgt_value} WHERE bcgttargetqualid = ? AND context = ? AND shortvalue = ? AND bcgttypeid = ?", array($targetQual->id, 'assessment', 'N/A', -1));
+                if(!$notA)
+                {
+                    $stdObj = new stdClass();
+                    $stdObj->bcgttargetqualid = $targetQual->id;
+                    $stdObj->context = 'assessment';
+                    $stdObj->bcgttypeid = -1;
+                    $stdObj->value = 'Not Achieved';
+                    $stdObj->shortvalue = 'N/A';
+                    $stdObj->ranking = 0;
+                    $DB->insert_record('block_bcgt_value', $stdObj);
+                }
+            }
+        }
+        //all values for Level 1/Level 2
+        //get all of the target grades for them. 
+        $sql = "SELECT distinct(targetqual.id), targetqual.* FROM {block_bcgt_target_qual} targetqual 
+            JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid 
+            JOIN {block_bcgt_type_family} fam ON fam.id = type.bcgttypefamilyid 
+            JOIN {block_bcgt_subtype} sub ON sub.id = targetqual.bcgtsubtypeid 
+            JOIN {block_bcgt_level} level ON level.id = targetqual.bcgtlevelid 
+            WHERE level.trackinglevel = ? AND fam.family = ? 
+                AND sub.subtype = ?";
+        $First2013l12AwardDB = $DB->get_record_sql($sql, array('Level 1 & 2', 'BTEC', 'Award'));
+        $First2013l12Award = $First2013l12AwardDB->id;
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Not Achieved';
+        $stdObj->shortvalue = 'N/A';
+        $stdObj->ranking = 0;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'U';
+        $stdObj->shortvalue = 'U';
+        $stdObj->ranking = 1;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'U/Level 1';
+        $stdObj->shortvalue = 'U/L1';
+        $stdObj->ranking = 1.3;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 1/U';
+        $stdObj->shortvalue = 'L1/U';
+        $stdObj->ranking = 1.6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 1';
+        $stdObj->shortvalue = 'L1';
+        $stdObj->ranking = 2;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 1/Level 2 Pass';
+        $stdObj->shortvalue = 'L1/L2 P';
+        $stdObj->ranking = 2.3;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Pass/Level 1';
+        $stdObj->shortvalue = 'L2 P/L1';
+        $stdObj->ranking = 2.6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Pass';
+        $stdObj->shortvalue = 'L2 P';
+        $stdObj->ranking = 3;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Pass/Level 2 Merit';
+        $stdObj->shortvalue = 'L2 P/L2 M';
+        $stdObj->ranking = 3.3;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Merit/Level 2 Pass';
+        $stdObj->shortvalue = 'L2 M/L2 P';
+        $stdObj->ranking = 3.6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Merit';
+        $stdObj->shortvalue = 'L2 M';
+        $stdObj->ranking = 4;
+        $DB->insert_record('block_bcgt_value', $stdObj);   
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Merit/Level 2 Distinction';
+        $stdObj->shortvalue = 'L2 M/L2 D';
+        $stdObj->ranking = 4.3;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Distinction/Level 2 Merit';
+        $stdObj->shortvalue = 'L2 D/L2 M';
+        $stdObj->ranking = 4.6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Distinction';
+        $stdObj->shortvalue = 'L2 D';
+        $stdObj->ranking = 5;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Distinction/Level 2 Distinction *';
+        $stdObj->shortvalue = 'L2 D/L2 D*';
+        $stdObj->ranking = 5.3;
+        $DB->insert_record('block_bcgt_value', $stdObj);    
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Distinction */Level 2 Distinction';
+        $stdObj->shortvalue = 'L2 D*/L2 D';
+        $stdObj->ranking = 5.6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $stdObj = new stdClass();
+        $stdObj->bcgttargetqualid = $First2013l12Award;      
+        $stdObj->context = 'assessment';
+        $stdObj->bcgttypeid = -1;
+        $stdObj->value = 'Level 2 Distinction *';
+        $stdObj->shortvalue = 'L2 D*';
+        $stdObj->ranking = 6;
+        $DB->insert_record('block_bcgt_value', $stdObj);
+
+        $First2013l12CertDB = $DB->get_record_sql($sql, array('Level 1 & 2', 'BTEC', 'Certificate'));
+        $First2013l12Cert = $First2013l12CertDB->id;
+
+        $sql2 = "SELECT * FROM {block_bcgt_value} WHERE bcgttargetqualid = ? AND context = ?";
+        $records = $DB->get_records_sql($sql2, array($First2013l12Award, 'assessment'));
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                $record->bcgttargetqualid = $First2013l12Cert;
+                $DB->insert_record('block_bcgt_value', $record);
+            }
+        }
+
+        $First2013l12ExtCertDB = $DB->get_record_sql($sql, array('Level 1 & 2', 'BTEC', 'Extended Certificate'));
+        $First2013l12ExtCert = $First2013l12ExtCertDB->id;
+        $records = $DB->get_records_sql($sql2, array($First2013l12Award, 'assessment'));
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                $record->bcgttargetqualid = $First2013l12ExtCert;
+                $DB->insert_record('block_bcgt_value', $record);
+            }
+        }
+
+        $First2013l12DipDB = $DB->get_record_sql($sql, array('Level 1 & 2', 'BTEC', 'Diploma'));
+        $First2013l12Dip = $First2013l12DipDB->id;
+        $records = $DB->get_records_sql($sql2, array($First2013l12Award, 'assessment'));
+        if($records)
+        {
+            foreach($records AS $record)
+            {
+                $record->bcgttargetqualid = $First2013l12Dip;
+                $DB->insert_record('block_bcgt_value', $record);
+            }
+        } 
+    }
+    
+    if($oldversion < 2014021705)
+    {
+        $sql = "SELECT distinct(targetqual.id), targetqual.* FROM {block_bcgt_target_qual} targetqual 
+            JOIN {block_bcgt_level} level ON level.id = targetqual.bcgtlevelid 
+            JOIN {block_bcgt_subtype} subtype ON subtype.id = targetqual.bcgtsubtypeid 
+            WHERE subtype.subtype = ? AND level.id = ?";
+        $ExtCert = $DB->get_record_sql($sql, array('Extended Certificate',7));
+        if($ExtCert)
+        {
+            $sql2 = "SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?";
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'U'));
+            if($record)
+            {
+                $record->unitsscorelower = 0;
+                $record->unitsscoreupper = 72;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 1'));
+            if($record)
+            {
+                $record->unitsscorelower = 72;
+                $record->unitsscoreupper = 144;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 PP'));
+            if($record)
+            {
+                $record->unitsscorelower = 144;
+                $record->unitsscoreupper = 174;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 MP'));
+            if($record)
+            {
+                $record->unitsscorelower = 174;
+                $record->unitsscoreupper = 204;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 MM'));
+            if($record)
+            {
+                $record->unitsscorelower = 204;
+                $record->unitsscoreupper = 234;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 DM'));
+            if($record)
+            {
+                $record->unitsscorelower = 234;
+                $record->unitsscoreupper = 264;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 DD'));
+            if($record)
+            {
+                $record->unitsscorelower = 264;
+                $record->unitsscoreupper = 270;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 D*D'));
+            if($record)
+            {
+                $record->unitsscorelower = 270;
+                $record->unitsscoreupper = 276;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($ExtCert->id, 'Level 2 D*D*'));
+            if($record)
+            {
+                $record->unitsscorelower = 276;
+                $record->unitsscoreupper = 500;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+        }
+        
+        $dip = $DB->get_record_sql($sql, array('Diploma',7));
+        if($dip)
+        {
+            $sql2 = "SELECT * FROM {block_bcgt_target_breakdown} WHERE bcgttargetqualid = ? AND targetgrade = ?";
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'U'));
+            if($record)
+            {
+                $record->unitsscorelower = 0;
+                $record->unitsscoreupper = 96;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 1'));
+            if($record)
+            {
+                $record->unitsscorelower = 96;
+                $record->unitsscoreupper = 192;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 PP'));
+            if($record)
+            {
+                $record->unitsscorelower = 192;
+                $record->unitsscoreupper = 234;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 MP'));
+            if($record)
+            {
+                $record->unitsscorelower = 234;
+                $record->unitsscoreupper = 276;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 MM'));
+            if($record)
+            {
+                $record->unitsscorelower = 276;
+                $record->unitsscoreupper = 318;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 DM'));
+            if($record)
+            {
+                $record->unitsscorelower = 318;
+                $record->unitsscoreupper = 360;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 DD'));
+            if($record)
+            {
+                $record->unitsscorelower = 360;
+                $record->unitsscoreupper = 366;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 D*D'));
+            if($record)
+            {
+                $record->unitsscorelower = 366;
+                $record->unitsscoreupper = 372;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+            
+            $record = $DB->get_record_sql($sql2, array($dip->id, 'Level 2 D*D*'));
+            if($record)
+            {
+                $record->unitsscorelower = 372;
+                $record->unitsscoreupper = 700;
+                $DB->update_record('block_bcgt_target_breakdown', $record);
+            }
+        }
+
+    }
+    
+    if($oldversion < 2014021707)
+    {
+        $record = null;
+        $sql = "SELECT break.* FROM {block_bcgt_target_breakdown} break 
+            JOIN {block_bcgt_target_qual} targetqual ON targetqual.id = break.bcgttargetqualid
+            JOIN {block_bcgt_level} level ON level.id = targetqual.bcgtlevelid
+            JOIN {block_bcgt_type} type ON type.id = targetqual.bcgttypeid
+            JOIN {block_bcgt_type_family} fam ON fam.id = type.bcgttypefamilyid
+            JOIN {block_bcgt_subtype} sub ON sub.id = targetqual.bcgtsubtypeid
+            WHERE fam.family = ? AND level.id = ? AND sub.subtype = ? AND break.targetgrade = ?";
+        $record = $DB->get_record_sql($sql, array('BTEC',2,'Diploma','D*'));
+        if($record)   
+        {
+            $record->unitsscorelower = 400;
+            $record->unitsscoreupper = 999;
+            $DB->update_record('block_bcgt_target_breakdown', $record);
+        }
+    }
+	
+
+    
+    
 }

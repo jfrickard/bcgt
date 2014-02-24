@@ -52,9 +52,16 @@ $PAGE->set_title(get_string($string, 'block_bcgt'));
 $PAGE->set_heading(get_string($string, 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string($string, 'block_bcgt'));
-$PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
 $PAGE->navbar->add(get_string('myDashboard', 'block_bcgt'),'my_dashboard.php?tab=dash','title');
-$PAGE->navbar->add(get_string('dashtabadm', 'block_bcgt'),'my_dashboard.php?tab=adm','title');
+if($courseID != -1)
+{
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($courseID));
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$courseID,'title');
+    $PAGE->navbar->add(get_string('editcoursequal','block_bcgt'), $CFG->wwwroot.
+            '/blocks/bcgt/forms/edit_course_qual.php?oCID='.
+            $originalCourseID.'&cID='.$courseID,'title');
+    
+}
 $PAGE->navbar->add(get_string($string, 'block_bcgt'));
 
 require_once($CFG->dirroot.'/blocks/bcgt/lib.php');
@@ -174,25 +181,34 @@ $out = $OUTPUT->header();
         $user = null;
         $sSearch = optional_param('studentSearch', '', PARAM_TEXT);
         $sID = optional_param('sID', -1, PARAM_INT);
+        if(isset($_POST['clear']))
+        {
+            $sSearch = '';
+            $sID = -1;
+        }
+        if($sSearch != '')
+        {
+            $users = get_users_bcgt($sSearch, $sID);
+        }
+        if(count($users) == 1)
+        {
+            $user = end($users);
+            $sID = $user->id;
+        }
+        if($sID != -1 || $user)
+        {
+            $user = $DB->get_record_sql("SELECT * FROM {user} WHERE id = ?", array($sID));
+            $out .= '<h2>'.$user->username.' : '.$user->firstname.' '.$user->lastname.'</h2>';
+        }
         $out .= '<form method="POST" name="" action="edit_students_units.php">'; 
         $out .= '<input type="hidden" name="oCID" value="'.$originalCourseID.'"/>';
         $out .= '<input type="hidden" name="a" value="'.$action.'"/>';
         $out .= '<input type="text" name="studentSearch" value="'.$sSearch.'"/>';
+        $out .= '<input type="hidden" name="sID" value="'.$sID.'"/>';
         $out .= '<input type="submit" name="search" value="Student Search"/>';
-        if($sID == -1 && $sSearch != '')
+        $out .= '<input type="submit" name="clear" value="Clear Selection"/>';
+        if($user)
         {
-            $users = get_users_bcgt($sSearch);
-        }
-        elseif($sID != -1)
-        {
-            $user = $DB->get_record_sql("SELECT * FROM {user} WHERE id = ?", array($sID));
-        }
-        if(count($users) == 1 || $user)
-        {
-            if(count($users) == 1)
-            {
-                $user = end($users);
-            }
             $currentQualTypes = array();
             $currentCount = 0;
             //find all of the user qualifications.

@@ -879,81 +879,142 @@ function applyTT()
     $('.tooltipContent').parents('td').addClass('criteriaComments');
     $('.tooltipContent').parents('td').attr('title', 'title');
     
-//    //Gets the Unit details
-    $('.uNToolTip').tooltip( {
-        content: function(){
+    //Gets the Unit details
+    $('.uNToolTip').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
             
-            // Get rid of any open ones
-            $('.ui-tooltip').remove();
+            $(this).tooltip( {
+                content: function(){
+
+                    var uID = $(this).attr('unitID');
+                    var sID = $(this).attr('studentID');
+                    var html = $('div#unitTooltipContent_'+uID+'_'+sID).html();
+                    return html;
+                }
+            } );
             
-            var uID = $(this).attr('unitID');
-            var sID = $(this).attr('studentID');
-            var html = $('div#unitTooltipContent_'+uID+'_'+sID).html();
-            return html;
         }
+        
     } );
+    
      
     //    Gets the criteria comments
-    $('.stuValue').tooltip( {
-        content: function(){
+    $('.stuValue').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
             
-            // Get rid of any open ones
-            $('.ui-tooltip').remove();
+            $(this).tooltip( {
+                content: function(){
+
+                    var cID = $(this).attr('criteriaID');
+                    var sID = $(this).attr('studentID');
+                    var html = $('div#criteriaTooltipContent_'+cID+'_'+sID).html();
+                    return html;
+                }
+            }  );
             
-            var cID = $(this).attr('criteriaID');
-            var sID = $(this).attr('studentID');
-            var html = $('div#criteriaTooltipContent_'+cID+'_'+sID).html();
-            return html;
         }
-    }  );
-    
-    $('.overallTask').tooltip( {
-        content: function(){
-            var cID = $(this).attr('criteriaID');
-            var sID = $(this).attr('studentID');
-            var html = $('div#overallTaskTooltipContent_'+cID+'_'+sID).html();
-            return html;
-        }
-    }  );
-    
-    $('.rangeValue').tooltip( {
-        content: function(){
-            
-            // Get rid of any open ones
-            $('.ui-tooltip').remove();
-            
-            var rID = $(this).attr('rangeID');
-            var uID = $(this).attr('unitID');
-            var sID = $(this).attr('studentID');
-            var html = $('div#rangeTooltipContent_'+rID+'_'+uID+'_'+sID).html();
-            return html;
-        }
-    }  );
-    
-    
-    $('.criteriaComments').tooltip( {
-        content: function(){
-            
-            // Get rid of any open ones
-            $('.ui-tooltip').remove();
-            
-            var tt = $(this).find('div.tooltipContent');
-            var html = $(tt).html();
-            return html;
-        }
-    }  );
-    
-    $('.signOffTD').tooltip( {
-        content: function(){
-            
-            // Get rid of any open ones
-            $('.ui-tooltip').remove();
-            
-            var tt = $(this).find('div.signoffTooltip');
-            var html = $(tt).html();
-            return html;
-        }
+        
     } );
+    
+    
+    $('.overallTask').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
+            
+            $(this).tooltip( {
+                content: function(){
+                    var cID = $(this).attr('criteriaID');
+                    var sID = $(this).attr('studentID');
+                    var html = $('div#overallTaskTooltipContent_'+cID+'_'+sID).html();
+                    return html;
+                }
+            });
+            
+        }
+        
+    } );
+    
+    
+    
+    $('.rangeValue').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
+            
+            $(this).tooltip( {
+                content: function(){
+
+                    var rID = $(this).attr('rangeID');
+                    var uID = $(this).attr('unitID');
+                    var sID = $(this).attr('studentID');
+                    var html = $('div#rangeTooltipContent_'+rID+'_'+uID+'_'+sID).html();
+                    return html;
+                }
+            }  );
+            
+        }
+        
+    } );
+    
+        
+    
+    $('.criteriaComments').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
+            
+            $(this).tooltip( {
+                content: function(){
+
+                    var tt = $(this).find('div.tooltipContent');
+                    var html = $(tt).html();
+                    return html;
+
+                }
+            } );
+            
+        }
+        
+    } );
+    
+        
+    $('.signOffTD').each( function(){
+        
+        // Check is already bound
+        var aria = $(this).attr('aria-describedby');
+        
+        if (aria === undefined || (aria !== undefined && aria.search('ui-tooltip') < 0) ){
+            
+            $(this).tooltip( {
+                content: function(){
+
+                    var tt = $(this).find('div.signoffTooltip');
+                    var html = $(tt).html();
+                    return html;
+
+                }
+            } );
+            
+        }
+        
+    } );
+    
+    
     
 
     
@@ -1364,8 +1425,8 @@ function applyTT()
         
     });
     
-    
-    $('.updateRangeAward').on('change', function(){
+    $('.updateRangeAward').unbind('change');
+    $('.updateRangeAward').bind('change', function(){
         
         var qualID = $(this).attr('qualID');
         var unitID = $(this).attr('unitID');
@@ -1395,11 +1456,6 @@ function applyTT()
     
     $( "#genericPopup" ).draggable();
         
-    // If tablet
-//    if ( /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Touch|Tablet/i.test(navigator.userAgent) )
-//    {
-//        new webkit_draggable('genericPopup');
-//    }
     
     //$('#genericPopup').resizable();
     

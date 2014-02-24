@@ -7,9 +7,10 @@
  * 
  * Author mchaney@bedford.ac.uk
  */
-
-require_once('BTECUnit.class.php');
-require_once('BTECLowerQualification.class.php');
+global $CFG;
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/lib.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECUnit.class.php');
+require_once($CFG->dirroot.'/blocks/bcgt/plugins/bcgtbtec/classes/BTECLowerQualification.class.php');
 class BTECLowerUnit extends BTECUnit {	
 	
     function BTECLowerUnit($unitID, $params, $loadParams)

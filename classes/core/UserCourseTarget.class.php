@@ -766,9 +766,13 @@ class UserCourseTarget {
         {
             //one qualification id therefore it will find only one record. 
             $record = end($records);
-            $id = $record->usercoursetargetsid;
-            $stdObj->id = $id;
-            $DB->update_record('block_bcgt_user_course_trgts',$stdObj);
+            if(isset($record->usercoursetargetsid))
+            {
+                $id = $record->usercoursetargetsid;
+                $stdObj->id = $id;
+                $DB->update_record('block_bcgt_user_course_trgts',$stdObj);
+            }
+            
         }
         else {
             //we are inserting brand new
@@ -938,48 +942,55 @@ class UserCourseTarget {
                             $breakdownID = -1;
                             if(isset($targetGrade[6]))
                             {
-                                $breakdown = Breakdown::retrieve_breakdown(-1, $qual->bcgttargetqualid, $targetGrade[6]);
-                                if(!$breakdown)
+                                if($targetGrade[6] != '' && $qual->bcgttargetqualid)
                                 {
-                                    $breakdownsNotFound[$targetGrade[6]] = $targetGrade[6];
-                                    if(!$this->insertmissingbreakdown)
+                                    $breakdown = Breakdown::retrieve_breakdown(-1, $qual->bcgttargetqualid, $targetGrade[6]);
+                                    if(!$breakdown)
                                     {
-                                        continue;
+                                        $breakdownsNotFound[$targetGrade[6]] = $targetGrade[6];
+                                        if(!$this->insertmissingbreakdown)
+                                        {
+                                            continue;
+                                        }
+                                        $obj = new stdClass();
+                                        $params = new stdClass();
+                                        $params->bcgttargetqualid = $qual->bcgttargetqualid;
+                                        $params->targetgrade = $targetGrade[6];
+                                        $breakdown = new Breakdown(-1, $params);
+                                        $breakdown->save();
                                     }
-                                    $obj = new stdClass();
-                                    $params = new stdClass();
-                                    $params->bcgttargetqualid = $qual->bcgttargetqualid;
-                                    $params->targetgrade = $targetGrade[6];
-                                    $breakdown = new Breakdown(-1, $params);
-                                    $breakdown->save();
+                                    $breakdownID = $breakdown->get_id();
                                 }
-                                $breakdownID = $breakdown->get_id();
+                                
                             }
                             $targetGradeID = -1;
                             if(isset($targetGrade[7]))
                             {
-                                $targetGradeObj = TargetGrade::retrieve_target_grade(-1, $qual->bcgttargetqualid, $targetGrade[7]);
-                                if(!$targetGradeObj)
+                                if($targetGrade[7] != '' && $qual->bcgttargetqualid)
                                 {
-                                    $targetGradesNotFound[$targetGrade[7]] = $targetGrade[7];
-                                    if(!$this->insertmissingtargetgrade)
+                                    $targetGradeObj = TargetGrade::retrieve_target_grade(-1, $qual->bcgttargetqualid, $targetGrade[7]);
+                                    if(!$targetGradeObj)
                                     {
-                                        continue;
+                                        $targetGradesNotFound[$targetGrade[7]] = $targetGrade[7];
+                                        if(!$this->insertmissingtargetgrade)
+                                        {
+                                            continue;
+                                        }
+                                        $obj = new stdClass();
+                                        $params = new stdClass();
+                                        $params->bcgttargetqualid = $qual->bcgttargetqualid;
+                                        $params->grade = $targetGrade[6];
+                                        $targetGradeObj = new TargetGrade(-1, $params);
+                                        $targetGradeObj->save();
                                     }
-                                    $obj = new stdClass();
-                                    $params = new stdClass();
-                                    $params->bcgttargetqualid = $qual->bcgttargetqualid;
-                                    $params->grade = $targetGrade[6];
-                                    $targetGradeObj = new TargetGrade(-1, $params);
-                                    $targetGradeObj->save();
+                                    $targetGradeID = $targetGradeObj->get_id();
                                 }
-                                $targetGradeID = $targetGradeObj->get_id();
+                                
                             }
                             
                             //what is the users course that this qualification is on?
                             $courseID = -1;
                             $courses = Qualification::get_user_course($qual->id, $userID, true);
-                            print_object($courses);
                             if($courses)
                             {
                                 foreach($courses AS $course)

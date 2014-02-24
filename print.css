@@ -192,3 +192,8 @@ tr.award_row td:nth-child(3)
 {
     display: none;
 }
+
+.criteriaPopupDetailsTable
+{
+    display: none;
+}

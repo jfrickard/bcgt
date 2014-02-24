@@ -2993,6 +2993,173 @@ function xmldb_block_bcgt_upgrade($oldversion = 0)
         
     }
     
+    if ($oldversion < 2014012900) {
+
+         // Define table block_bcgt_user_group to be created
+        $table = new xmldb_table('block_bcgt_user_grouping');
+
+        // Adding fields to table block_bcgt_user_group
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '18', null, null, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '18', null, null, null, null);
+        $table->add_field('groupingid', XMLDB_TYPE_INTEGER, '18', null, null, null, null);
+
+        // Adding keys to table block_bcgt_user_group
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+
+        // Adding indexes to table block_bcgt_user_group
+        $table->add_index('userid-ind', XMLDB_INDEX_NOTUNIQUE, array('userid'));
+        $table->add_index('courseid-ind', XMLDB_INDEX_NOTUNIQUE, array('courseid'));
+        $table->add_index('groupingid-ind', XMLDB_INDEX_NOTUNIQUE, array('groupingid'));
+        $table->add_index('userid_courseid_ind', XMLDB_INDEX_NOTUNIQUE, array('userid', 'courseid'));
+        $table->add_index('userid_groupingid_ind', XMLDB_INDEX_NOTUNIQUE, array('userid', 'groupingid'));
+        $table->add_index('courseid_groupingid_ind', XMLDB_INDEX_NOTUNIQUE, array('courseid', 'groupingid'));
+        $table->add_index('userid_courseid_groupingid_ind', XMLDB_INDEX_NOTUNIQUE, array('userid', 'courseid', 'groupingid'));
+
+        // Conditionally launch create table for block_bcgt_user_group
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+    }
+    
+    if($oldversion < 2014012900)
+    {
+        $sql = "SELECT * FROM {config} WHERE name = ? AND value = ?";
+        if(!$DB->get_record_sql($sql, array('dImp_default_staff_group_file', 'tutorongroup.csv')))
+        {
+            $record = new stdClass();
+            $record->name = 'dImp_default_staff_group_file';
+            $record->value = 'tutorongroup.csv';
+            $DB->insert_record('config', $record);
+        }
+        
+        if(!$DB->get_record_sql($sql, array('dImp_archive_staff_groups', 'staffgroups')))
+        {
+            $record = new stdClass();
+            $record->name = 'dImp_archive_staff_groups';
+            $record->value = 'staffgroups';
+            $DB->insert_record('config', $record);
+        }
+        
+        if(!$DB->get_record_sql($sql, array('dImp_errors_staff_group_file', 'staffgroupError')))
+        {
+            $record = new stdClass();
+            $record->name = 'dImp_errors_staff_group_file';
+            $record->value = 'staffgroupError';
+            $DB->insert_record('config', $record);
+        }
+        
+        if(!$DB->get_record_sql($sql, array('dImp_errors_staff_group', 'staffgroup')))
+        {
+            $record = new stdClass();
+            $record->name = 'dImp_errors_staff_group';
+            $record->value = 'staffgroup';
+            $DB->insert_record('config', $record);
+        }
+    }
+    
+    if ($oldversion < 2014021708) {
+
+        // Define table block_bcgt_mod_linking to be created
+        $table = new xmldb_table('block_bcgt_mod_linking');
+
+        // Adding fields to table block_bcgt_mod_linking
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('moduleid', XMLDB_TYPE_INTEGER, '18', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('modtablename', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('modtablecoursefname', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('modtableduedatefname', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('modsubmissiontable', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('submissionuserfname', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('submissiondatefname', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('submissionmodidfname', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('checkforautotracking', XMLDB_TYPE_INTEGER, '1', null, null, null, null);
+        // Adding keys to table block_bcgt_mod_linking
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $performInitialInstall = false;
+        // Conditionally launch create table for block_bcgt_mod_linking
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+            $performInitialInstall = true;
+        }
+        
+        //now we create the standard ones. 
+        if($performInitialInstall)
+        {
+            //assign
+            $sql = "SELECT * FROM {modules} WHERE name = ?";
+            $assign = $DB->get_record_sql($sql, array('assign'));
+            if($assign)
+            {
+                $stdObj = new stdClass();
+                $stdObj->moduleid = $assign->id;
+                $stdObj->modtablename = 'assign';
+                $stdObj->modtablecoursefname = 'course';
+                $stdObj->modtableduedatefname = 'duedate';
+                $stdObj->modsubmissiontable = 'assign_submission';
+                $stdObj->submissionuserfname = 'userid';
+                $stdObj->submissiondatefname = 'timecreated';
+                $stdObj->submissionmodidfname = 'assignment';
+                $stdObj->checkforautotracking = 1;
+                $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+            }
+
+            //assignment
+            $assignment = $DB->get_record_sql($sql, array('assignment'));
+            if($assignment)
+            {
+                $stdObj = new stdClass();
+                $stdObj->moduleid = $assignment->id;
+                $stdObj->modtablename = 'assignment';
+                $stdObj->modtablecoursefname = 'course';
+                $stdObj->modtableduedatefname = 'timedue';
+                $stdObj->modsubmissiontable = 'assignment_submissions';
+                $stdObj->submissionuserfname = 'userid';
+                $stdObj->submissiondatefname = 'timecreated';
+                $stdObj->submissionmodidfname = 'assignment';
+                $stdObj->checkforautotracking = 1;
+                $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+            }
+
+            //quiz
+            $quiz = $DB->get_record_sql($sql, array('quiz'));
+            if($quiz)
+            {
+                $stdObj = new stdClass();
+                $stdObj->moduleid = $quiz->id;
+                $stdObj->modtablename = 'quiz';
+                $stdObj->modtablecoursefname = 'course';
+                $stdObj->modtableduedatefname = 'timeclose';
+                $stdObj->modsubmissiontable = 'quiz_attempts';
+                $stdObj->submissionuserfname = 'userid';
+                $stdObj->submissiondatefname = 'timefinish';
+                $stdObj->submissionmodidfname = 'quiz';
+                $stdObj->checkforautotracking = 1;
+                $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+            }
+
+            //urnitindirect
+            $turnitin = $DB->get_record_sql($sql, array('turnitintool'));
+            if($turnitin)
+            {
+                $stdObj = new stdClass();
+                $stdObj->moduleid = $turnitin->id;
+                $stdObj->modtablename = 'turnitintool';
+                $stdObj->modtablecoursefname = 'course';
+                $stdObj->modtableduedatefname = 'defaultdtdue';
+                $stdObj->modsubmissiontable = 'turnitintool_submissions';
+                $stdObj->submissionuserfname = 'userid';
+                $stdObj->submissiondatefname = 'submission_modified';
+                $stdObj->submissionmodidfname = 'turnitintoolid';
+                $stdObj->checkforautotracking = 1;
+                $DB->insert_record('block_bcgt_mod_linking', $stdObj);
+            }
+        }
+        
+        
+    }
+    
+    
     //update required:
     //values
     //target grades

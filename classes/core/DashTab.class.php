@@ -26,6 +26,7 @@ abstract class DashTab {
     const DASHTAB10 = 'hel';
     const DASHTAB11 = 'feed';
     const DASHTAB12 = 'mess';
+    const DASHTAB13 = 'grouping';
     
     function DashTab ()
     {
@@ -75,8 +76,9 @@ abstract class DashTab {
         //'My Dashboard'
         //'Trackers' 'Courses' 'Students' 'Team' 'Units' 'Reports' 'Assignments';
         //'Admin' 'Help' 'Feedback' 'Messages';
-        $retval .= DashTab::bcgt_core_get_core_dash_tab(DashTab::DASHTAB1, $tab, 'first');
-        $retval .= DashTab::bcgt_core_get_core_dash_tab(DashTab::DASHTAB2, $tab, 'middle');
+//        $retval .= DashTab::bcgt_core_get_core_dash_tab(DashTab::DASHTAB1, $tab, 'first');
+        $retval .= DashTab::bcgt_core_get_core_dash_tab(DashTab::DASHTAB2, $tab, 'first');
+        $retval .= DashTab::bcgt_core_get_core_dash_tab(DashTab::DASHTAB13, $tab, 'first');
 //        if(($linkQualCourse = get_config('bcgt', 'linkqualcourse')) 
 //                && has_capability('block/bcgt:viewcoursestab', $courseContext))
 //        {
@@ -123,11 +125,11 @@ abstract class DashTab {
     
     public static function bcgt_core_get_core_dash_tab($tabName, $tabFocus, $class){
         global $CFG;
-        $focus = ($tabFocus == $tabName ? true : false);
-        $retval = '<li class="'.$class.'">'.
-        '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/my_dashboard.php?tab='.$tabName.'">'.
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $focus = ($tabFocus == $tabName ? 'focus' : '');
+        $retval = '<li class="'.$class.' '.$focus.'">'.
+        '<a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/my_dashboard.php?tab='.$tabName.'&cID='.$courseID.'">'.
         '<span>'.get_string('dashtab'.$tabName, 'block_bcgt').'</span></a></li>';
-        
         return $retval;
     }
     
@@ -227,6 +229,9 @@ abstract class DashTab {
                 //then get the messages
                 return DashTab::bcgt_tab_get_messages_tab();
                 break;
+            case(DashTab::DASHTAB13):
+                return DashTab::bcgt_tab_get_group_tab();
+                break;
             default:
                 return DashTab::bcgt_tab_get_plugin_tab($tabName);
                 break;
@@ -291,6 +296,8 @@ abstract class DashTab {
     
     public static function bcgt_tab_get_trackers_tab()
     {
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        //if its 1 its come from the front main page. 
         global $USER, $CFG, $PAGE, $DB;
         $jsModule = array(
             'name'     => 'block_bcgt',
@@ -303,6 +310,32 @@ abstract class DashTab {
         $retval .= '<p>'.get_string('mytrackersdesc', 'block_bcgt').'</p>';
         //If they have the capibility to add themselves to trackers
         //then show that link
+        if($courseID != 1)
+        {
+            //then lets show the ones on this qual from here:
+            $retval .= '<div id="coursequaltrackers">';
+            if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
+            {
+                $qualifications = search_qualification(-1, -1, -1, '', 
+                    -1, null, $courseID, true, true, null);
+            }
+            else
+            {
+                $qualifications = get_role_quals($USER->id, array('teacher', 'editingteacher'), '', -1, $courseID);
+            }
+            if($qualifications)
+            {
+                $course = $DB->get_record_sql('SELECT * FROM {course} WHERE id = ?', array($courseID));
+                if($course)
+                {
+                    $retval .= '<h3>'.$course->shortname.' '.get_string('qualifications','block_bcgt').'</h3>';
+                }
+                $retval .= DashTab::display_qual_trackers($qualifications, 'my');
+            }
+            $retval .= '</div>';
+            $retval .= '<h3>'.get_string('allqualifications','block_bcgt').'</h3>';
+        }    
+        
         if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
         {
             $qualifications = search_qualification(-1, -1, -1, '', 
@@ -314,43 +347,194 @@ abstract class DashTab {
         }
         if($qualifications)
         {
-            foreach($qualifications AS $qual)
-            {
-                //is the qualification on a course?
-                //does the qualification haave any students?
-                $expand = true;
-                $expandClass = '';
-                $onCourse = $DB->get_records_sql('SELECT * FROM {block_bcgt_course_qual} WHERE bcgtqualificationid = ?', array($qual->id));
-                if(!$onCourse)
-                {
-                   $expand = false;
-                   $expandClass='no';
-                }
-
-                $class = '';
-                $hasStudents = $DB->get_records_sql('SELECT userqual.id FROM {block_bcgt_user_qual} userqual 
-                    JOIN {role} role ON role.id = userqual.roleid WHERE bcgtqualificationid = ? AND role.shortname = ?', 
-                        array($qual->id, 'student'));
-                if(!$hasStudents)
-                {
-                    $class = 'noStudents';
-                }
-                
-                //if have the ability, then allow to add students to this qual. 
-                $retval .= "<h3 class='simplequalreportheading$expandClass $class' id='sqrh_$qual->id'>";
-                if($expand)
-                {
-                    $retval .= "<img src='$CFG->wwwroot/blocks/bcgt/pix/expandIcon.jpg'>".bcgt_get_qualification_display_name($qual, true, ' ')."";
-                }
-                $retval .= '</h3>';
-                //ajax display call
-                //expand
-                //will get tabs and reporting. 
-                $retval .= '<div class="simplequalreport" id="sqrc_'.$qual->id.'"></div>';
-
-            }
+            $retval .= DashTab::display_qual_trackers($qualifications, 'all');
         }
         $retval .= '</div>';
+        return $retval;
+    }
+    
+    public static function display_qual_trackers($qualifications, $type)
+    {
+        global $DB, $CFG;
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $retval = '<table class="trackersOverallTable">';
+        $retval .= '<tr><th>'.get_string('report', 'block_bcgt').'</th>'.
+                '<th>'.get_string('qualification', 'block_bcgt').'</th>';
+        $retval .= '<th colspan="4">'.get_string('grids','block_bcgt').'</th>';
+        $retval .= '</tr>';
+        foreach($qualifications AS $qual)
+        {
+            //is the qualification on a course?
+            //does the qualification haave any students?
+            $expand = true;
+            $expandClass = '';
+            $onCourse = $DB->get_records_sql('SELECT * FROM {block_bcgt_course_qual} WHERE bcgtqualificationid = ?', array($qual->id));
+            if(!$onCourse)
+            {
+               $expand = false;
+               $expandClass='no';
+            }
+
+            $class = '';
+            $hasStudents = $DB->get_records_sql('SELECT userqual.id FROM {block_bcgt_user_qual} userqual 
+                JOIN {role} role ON role.id = userqual.roleid WHERE bcgtqualificationid = ? AND role.shortname = ?', 
+                    array($qual->id, 'student'));
+            if(!$hasStudents)
+            {
+                $class = 'noStudents';
+            }
+
+            //if have the ability, then allow to add students to this qual. 
+            $retval .= "<tr><td class='simplequalreportheading$expandClass ".
+                    "$class' id='sqrh_".$qual->id."_$type'><span class='report'>".
+                    get_string('report','block_bcgt')."<span></td>";
+            //<img src='$CFG->wwwroot/blocks/bcgt/pix/expandIcon.jpg'>
+            if($expand)
+            {
+                $retval .= "<td>".bcgt_get_qualification_display_name($qual, true, ' ')."</td>";
+                $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=s&qID='.$qual->id.'&aqID='.$qual->id.'&cID='.
+                        $courseID.'">'.get_string('student', 'block_bcgt').'</a></td>';
+                if(count(array_intersect(explode('|',BCGT_UNIT_VIEW_FAMILIES), array($qual->family))) > 0)
+                {
+                    $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=u&qID='.$qual->id.'&aqID='.$qual->id.'&cID='.
+                        $courseID.'">'.get_string('unit', 'block_bcgt').'</a></td>';
+                }
+                if(count(array_intersect(explode('|',BCGT_CLASS_VIEW_FAMILIES), array($qual->family))) > 0)
+                {
+                    $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=c&qID='.$qual->id.'&aqID='.$qual->id.'&cID='.
+                        $courseID.'">'.get_string('class', 'block_bcgt').'</a></td>';
+                }
+//                    $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+//                            'php?g=a&qID='.$qual->id.'&aqID='.$qual->id.'&cID='.
+//                            $courseID.'">'.get_string('assignment', 'block_bcgt').'</a></td>';
+            }
+            $retval .= '</tr>';
+            $retval .= '<tr><td colspan="6">';
+            $retval .= '<div class="simplequalreport" id="sqrc_'.$qual->id.'_'.$type.'"></div>';
+            $retval .= '</td></tr>';
+            //ajax display call
+            //expand
+            //will get tabs and reporting. 
+
+
+        }
+        $retval .= '</table>';
+        return $retval;
+    }
+    
+    public static function bcgt_tab_get_group_tab()
+    {
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        global $USER, $CFG, $PAGE, $DB;        
+        $jsModule = array(
+            'name'     => 'block_bcgt',
+            'fullpath' => '/blocks/bcgt/js/block_bcgt.js',
+            'requires' => array('base', 'io', 'node', 'json', 'event')
+        );
+        $PAGE->requires->js_init_call('M.block_bcgt.initgroupstab', null, true, $jsModule);
+        $retval = '<div id="groupsDashContainer">';
+        $retval .= '<h2 class="dashContentHeading">'.get_string('mygroupings', 'block_bcgt');
+        $retval .= '<span class="editgroups"> - <a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/edit_user_groups.php">'.get_string('editmygroups', 'block_bcgt').'</a></span>';
+        $retval .= '</h2>';
+        $retval .= '<p>'.get_string('mytrackersdesc', 'block_bcgt').'</p>';
+        //If they have the capibility to add themselves to trackers
+        //then show that link
+        $group = new Group();
+        $checkAllGroups = false;
+        
+        if($courseID != 1 && $courseID != -1)
+        {
+            //then lets show the ones on this qual from here:
+            $retval .= '<div id="coursequaltrackers">';
+            if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
+            {
+                $groupings = $group->get_all_possible_groups($courseID);
+            }
+            else
+            {
+                $groupings = $group->get_my_groups($courseID);
+            }
+            if($groupings)
+            {
+                $course = $DB->get_record_sql('SELECT * FROM {course} WHERE id = ?', array($courseID));
+                if($course)
+                {
+                    $retval .= '<h3>'.$course->shortname.' '.get_string('groups','block_bcgt').'</h3>';
+                }
+                $retval .= DashTab::display_group_trackers($groupings, 'my');
+            }
+            $retval .= '</div>';
+            $retval .= '<h3>'.get_string('allqualifications','block_bcgt').'</h3>';
+        } 
+        
+        if(has_capability('block/bcgt:viewallgrids', context_system::instance()))
+        {
+            $checkAllGroups = true;
+            $groupings = $group->get_all_possible_groups();
+        }
+        else
+        {
+            $groupings = $group->get_my_groups();
+        }
+        if($groupings)
+        {
+            $retval .= DashTab::display_group_trackers($groupings, 'all');
+        }
+        else
+        {
+            $retval .= '<p>'.get_string('nogroupaccess', 'block_bcgt').'</p>';
+        }
+        $retval .= '</div>';
+        return $retval;
+    }
+    
+    public static function display_group_trackers($groupings, $type)
+    {
+        global $DB, $CFG;
+        $courseID = optional_param('cID', -1, PARAM_INT);
+        $retval = '<table class="trackersOverallTable">';
+        $retval .= '<tr><th>'.get_string('report', 'block_bcgt').'</th>'.
+                '<th>'.get_string('grouping', 'block_bcgt').'</th>';
+        $retval .= '<th colspan="4">'.get_string('grids','block_bcgt').'</th>';
+        $retval .= '</tr>';
+        foreach($groupings AS $grouping)
+        {
+            //is the qualification on a course?
+            //does the qualification haave any students?
+            $expand = true;
+            $expandClass = '';
+            $class = '';
+
+            //if have the ability, then allow to add students to this qual. 
+            $retval .= "<tr><td class='simplegroupreportheading$expandClass ".
+                    "$class' id='sqrh_".$grouping->id."_$type'><span class='report'>".
+                    get_string('report','block_bcgt')."<span></td>";
+            //<img src='$CFG->wwwroot/blocks/bcgt/pix/expandIcon.jpg'>
+            if($expand)
+            {
+                $retval .= "<td>".$grouping->name."</td>";
+                $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=s&grID='.$grouping->id.'&cID='.
+                        $courseID.'">'.get_string('student', 'block_bcgt').'</a></td>';
+                $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=u&grID='.$grouping->id.'&cID='.
+                        $courseID.'">'.get_string('unit', 'block_bcgt').'</a></td>';
+                $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+                        'php?g=c&grID='.$grouping->id.'&cID='.
+                        $courseID.'">'.get_string('class', 'block_bcgt').'</a></td>';
+//                    $retval .= '<td><a href="'.$CFG->wwwroot.'/blocks/bcgt/forms/grid_select.'.
+//                            'php?g=a&grID='.$group->id.'&agrID='.$group->id.'&cID='.
+//                            $courseID.'">'.get_string('assignment', 'block_bcgt').'</a></td>';
+            }
+            $retval .= '</tr>';
+            $retval .= '<tr><td colspan="6">';
+            $retval .= '<div class="simplegroupreport" id="sqrc_'.$grouping->id.'_'.$type.'"></div>';
+            $retval .= '</td></tr>';
+        }
+        $retval .= '</table>';
         return $retval;
     }
     

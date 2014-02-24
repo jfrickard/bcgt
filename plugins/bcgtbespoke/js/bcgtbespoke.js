@@ -108,7 +108,7 @@ function removeCriterionTable(id)
 {
 
     numOfCriterion--;
-    $('#criterionTable_'+id).remove();
+    $('#criterionRow_'+id).remove();
     $('.subTableParent_'+id).remove();
     arrayOfSubCriterion[id] = undefined;
 

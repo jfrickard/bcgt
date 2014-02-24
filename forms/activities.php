@@ -13,7 +13,7 @@ require_once('../lib.php');
 require_once($CFG->dirroot.'/user/profile/lib.php');
 
 $cID = optional_param('cID', -1, PARAM_INT);
-$tab = optional_param('tab', 'unit', PARAM_TEXT);
+$tab = optional_param('tab', '', PARAM_TEXT);
 if($cID != -1)
 {
     $context = context_course::instance($cID);
@@ -33,6 +33,11 @@ $PAGE->set_heading(get_string('viewactivitylinks', 'block_bcgt'));
 $PAGE->set_pagelayout('login');
 $PAGE->add_body_class(get_string('activity', 'block_bcgt'));
 $PAGE->navbar->add(get_string('pluginname', 'block_bcgt'),'my_dashboard.php','title');
+if($cID != -1)
+{
+    $course = $DB->get_record_sql("SELECT * FROM {course} WHERE id = ?", array($cID));
+    $PAGE->navbar->add($course->shortname,$CFG->wwwroot.'/course/view.php?id='.$cID,'title');
+}
 $PAGE->navbar->add(get_string('viewactivitylinks', 'block_bcgt'),'','title');
 
 $jsModule = array(
@@ -48,20 +53,35 @@ $out = $OUTPUT->header();
 $out .= html_writer::tag('h2', get_string('viewactivitylinks','block_bcgt').
         '', 
         array('class'=>'formheading'));
-$out .= html_writer::start_tag('div', array('class'=>'bcgt_activity_controls', 
+$out .= html_writer::start_tag('div', array('class'=>'bcgt_activity_controls bcgt_div_container', 
     'id'=>'editCourseQual'));
-
-$out .= '<p>Activities currently do not take into consideration "Groups" and the view below
-    is for the entire course and not just a specific individual</p>';
 
 $out.= '<div class="tabs"><div class="tabtree">';
 $out.= '<ul class="tabrow0">';
-$out.= '<li class="first">'.
-        '<a href="?tab=unit&cID='.$cID.'">'.
-        '<span>'.get_string('activitiesbyunit', 'block_bcgt').'</span></a></li>';
-$out.= '<li class="last">'.
+if(has_capability('block/bcgt:manageactivitylinks', $context))
+{
+    if($tab == '')
+    {
+        $tab = 'acheck';
+    }
+    $focus = ($tab == 'acheck')? 'focus' : '';
+    $out.= '<li class="last '.$focus.'">'.
+        '<a href="?tab=acheck&cID='.$cID.'">'.
+        '<span>'.get_string('activitycheck', 'block_bcgt').'</span></a></li>';
+}
+if($tab == '')
+{
+    $tab = 'act';
+}
+$focus = ($tab == 'act')? 'focus' : '';
+$out.= '<li class="first '.$focus.'">'.
         '<a href="?tab=act&cID='.$cID.'">'.
         '<span>'.get_string('activitiesbyactivity', 'block_bcgt').'</span></a></li>';
+$focus = ($tab == 'unit')? 'focus' : '';
+$out.= '<li class="last '.$focus.'">'.
+        '<a href="?tab=unit&cID='.$cID.'">'.
+        '<span>'.get_string('activitiesbyunit', 'block_bcgt').'</span></a></li>';
+
 //if(has_capability('block/bcgt:viewclassgrids', $context))
 //{
 //    $out.= '<li class="last">'.
@@ -71,12 +91,6 @@ $out.= '<li class="last">'.
 //$out.= '<li class="last">'.
 //        '<a href="?tab=actcal&cID='.$cID.'">'.
 //        '<span>'.get_string('activitycalendarview', 'block_bcgt').'</span></a></li>';
-//if(has_capability('block/bcgt:manageactivitylinks', $context))
-//{
-//    $out.= '<li class="last">'.
-//        '<a href="?tab=ac&cID='.$cID.'">'.
-//        '<span>'.get_string('activitycheck', 'block_bcgt').'</span></a></li>';
-//}
 $out.= '</ul>';
 $out.= '</div></div>';
 if($tab == 'actcal')
@@ -84,10 +98,21 @@ if($tab == 'actcal')
     $out .= '<p>This will show a calendar view of all assignments, 
         units and criterias</p>';
 }
-elseif($tab == 'ac')
+elseif($tab == 'acheck')
 {
-    $out .= '<p>This will show a grid of units and criteria showing which are on
-        assignments/activities and which are not</p>';
+    //get quals on course
+    $includeFamilies = array('BTEC');
+    //get all of the qual families that are on this course
+    $families = get_course_qual_families($cID, $includeFamilies);
+    if($families)
+    {
+        foreach($families AS $family)
+        {
+            require_once($CFG->dirroot.$family->classfolderlocation.'/'.str_replace(' ', '', $family->type).'Qualification.class.php');
+            $class = str_replace(' ', '', $family->type).'Qualification';
+            $out.= $class::gradebook_check_page($cID);
+        }
+    } 
 }
 elseif($tab == 'actgrid')
 {
@@ -110,8 +135,9 @@ elseif($tab == 'actgrid')
 }
 else
 {
+    $includeFamilies = array('BTEC');
     //get all of the qual families that are on this course
-    $families = get_course_qual_families($cID);
+    $families = get_course_qual_families($cID, $includeFamilies);
     if($families)
     {
         //for each family get the parent family
